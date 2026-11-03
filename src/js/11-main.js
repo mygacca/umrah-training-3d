@@ -38,6 +38,35 @@ var vignette = createComfortVignette(camera);
 var reticle = createGazeReticle(camera);
 var modes = createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle });
 
+// ——— الجودة وأوقات المشهد (الطبقتان 0 و1 من docs/realism-plan.md) ———
+var quality = createQuality({ renderer, world });
+var atmosphere = createAtmosphere({ scene, renderer, world });
+quality.onTier = (tier) => atmosphere.setResolution(tier.shadowRes);
+modes.onChange = (mode) => quality.apply(mode);
+function markChoice(attr, value) {
+  document.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute("aria-pressed", b.getAttribute(attr) === value ? "true" : "false"));
+}
+atmosphere.onChange = (t) => markChoice("data-time", t);
+document.querySelectorAll("[data-time]").forEach((b) => b.addEventListener("click", () => atmosphere.setTime(b.dataset.time)));
+document.querySelectorAll("[data-quality]").forEach((b) =>
+  b.addEventListener("click", () => {
+    quality.setChoice(b.dataset.quality, modes.mode);
+    markChoice("data-quality", quality.choice);
+  }),
+);
+markChoice("data-quality", quality.choice);
+atmosphere.setTime(
+  (() => {
+    const q = new URLSearchParams(location.search).get("time");
+    if (q && TIMES_OF_DAY[q]) return q;
+    try {
+      const saved = localStorage.getItem("umrah.time");
+      if (saved && TIMES_OF_DAY[saved]) return saved;
+    } catch {}
+    return DEFAULT_TIME;
+  })(),
+);
+
 hud.onCardBtn = () => (game.stage === "done" ? restart() : game.fastToSafa());
 Promise.race([
   Promise.all([
@@ -241,6 +270,7 @@ function step(dt) {
   game.update(dt);
   const pos = player.getPos();
   world.update(dt, pos);
+  atmosphere.update(dt);
   hud.update(dt);
   panels.update(dt, { time: hud.time, pos, heading: player.headingPhi() });
   modes.afterFrame(dt);
@@ -250,7 +280,9 @@ var clock = new Ir();
 modes.set(chosenMode === "xr" || chosenMode === "cardboard" ? defaultMode : chosenMode);
 renderer.setAnimationLoop(() => {
   clock.update();
-  step(Math.min(clock.getDelta(), 0.05));
+  const realDt = clock.getDelta();
+  quality.frame(realDt);
+  step(Math.min(realDt, 0.05));
   modes.render();
 });
-window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, step };
+window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, step };

@@ -40,13 +40,20 @@ function build() {
 }
 
 const html = build();
+// حد الحجم (docs/realism-plan.md): ملف واحد يُحمَّل على الجوال. ما زاد يُحمَّل لاحقًا من ملفات خارجية
+const MAX_BYTES = 1.5 * 1024 * 1024;
+const bytes = Buffer.byteLength(html);
 if (process.argv.includes('--check')) {
   const cur = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : '';
   if (cur !== html) {
     console.error('index.html لا يطابق src/. شغّل: npm run build');
     process.exit(1);
   }
-  console.log('index.html يطابق src/');
+  if (bytes > MAX_BYTES) {
+    console.error(`index.html ${(bytes / 1024).toFixed(0)} KB، والحد ${MAX_BYTES / 1024} KB`);
+    process.exit(1);
+  }
+  console.log(`index.html يطابق src/ (${(bytes / 1024).toFixed(0)} KB من ${MAX_BYTES / 1024})`);
 } else {
   fs.writeFileSync(out, html);
   console.log(`index.html: ${(Buffer.byteLength(html) / 1024).toFixed(0)} KB`);

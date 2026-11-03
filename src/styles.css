@@ -251,6 +251,8 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
   color: var(--ivory);
   font: 600 13px var(--kufi);
 }
+.choices { grid-template-columns: repeat(4, 1fr); }
+.choices button[aria-pressed="true"] { background: var(--gold-hi); color: var(--deep); border-color: var(--gold-hi); }
 .keys { margin: 0; }
 .keys div { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px solid rgba(246, 241, 228, 0.08); font: 400 13px / 1.8 var(--kufi); }
 .keys dt { flex: none; width: 76px; color: var(--gold-hi); font-weight: 600; }

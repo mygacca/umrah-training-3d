@@ -46,16 +46,19 @@ function Ed(i, t) {
   let e = { labels: [], showLabels: !0, suppressLabels: !0, showCrowd: !0 },
     n = Math.min(8, t.capabilities.getMaxAnisotropy()),
     s = new Pt(new fn(900, 32, 16), Sd());
-  (s.renderOrder = -10), i.add(s);
+  (s.renderOrder = -10), i.add(s), (e.sky = s);
   let r = new Fs(t),
     a = new Di();
-  a.add(new Pt(new fn(10, 32, 16), Sd())),
+  a.add(new Pt(new fn(10, 32, 16), Sd())), (e.envScene = a);
+  // السماء والبيئة والضوءان مكشوفة لأوقات المشهد في 03-atmosphere.js
+  (e.hemi = new Ar("#dcecff", "#d9c7a4", 1.05)),
     (i.environment = r.fromScene(a, 0.04).texture),
     (i.environmentIntensity = 0.55),
     r.dispose(),
     (i.fog = new ar("#eedfc4", 150, 780)),
-    i.add(new Ar("#dcecff", "#d9c7a4", 1.05));
+    i.add(e.hemi);
   let o = new Cr("#ffe6be", 2.5);
+  e.sun = o;
   o.position.copy(bd).multiplyScalar(120), i.add(o);
   let l = Mn(Gc(), { repeat: [46, 46], aniso: n }),
     c = Se("#ffffff", { map: l, roughness: 0.3, envMapIntensity: 1 }),
@@ -71,7 +74,7 @@ function Ed(i, t) {
     new Ve(Yt.lx + 8, Yt.lz + 8),
     new Le({ map: Mn(md(), { wrap: !1 }), transparent: !0, depthWrite: !1 }),
   );
-  m.rotation.set(-Math.PI / 2, 0, Yt.rot), (m.position.y = 0.02), i.add(m);
+  m.rotation.set(-Math.PI / 2, 0, Yt.rot), (m.position.y = 0.02), i.add(m), (e.kaabaShade = m);
   let p = new nn();
   (p.rotation.y = Yt.rot), i.add(p);
   let b = new Pt(new Me(Yt.lx + 0.6, 0.32, Yt.lz + 0.6), Se("#f4f3ef", { roughness: 0.35 }));
@@ -195,7 +198,7 @@ function Ed(i, t) {
   }
   {
     let J = Mn(pd(), { repeat: [60, 1], aniso: n }),
-      ct = Se("#ffffff", { map: J, alphaTest: 0.5, side: qe, roughness: 0.82 }),
+      ct = (e.arcadeMat = Se("#ffffff", { map: J, alphaTest: 0.5, side: qe, roughness: 0.82 })),
       _t = new Pt(new Re(pe.arcIn, pe.arcIn, 9, 240, 1, !0), ct);
     _t.position.y = 4.5;
     let it = new Pt(new Re(pe.arcOut, pe.arcOut, 9, 240, 1, !0), ct);
@@ -272,7 +275,7 @@ function Ed(i, t) {
       let N = (it * Math.PI) / 180;
       ct(Math.cos(N) * 62, -Math.sin(N) * 62);
     }
-    i.add(new Pt(Bs(q), Se("#f1ebde", { roughness: 0.75 }))), i.add(new Pt(Bs(J), u));
+    i.add(new Pt(Bs(q), (e.minaretMat = Se("#f1ebde", { roughness: 0.75 })))), i.add(new Pt(Bs(J), u));
   }
   {
     let q = [],
@@ -533,6 +536,11 @@ function Ed(i, t) {
     rt = new U(),
     ot = new U(),
     ft = new U(0, 1, 0);
+  e.crowds = [$, Vt];
+  // مستويات الجودة (05-quality.js) ترسم جزءًا من الحشود فقط
+  e.setCrowdFraction = (f) => {
+    ($.count = Math.round(Wt * f)), (Vt.count = Math.round(xt * f));
+  };
   e.setCrowd = (q) => {
     (e.showCrowd = q), ($.visible = q), (Vt.visible = q);
   };
@@ -553,7 +561,7 @@ function Ed(i, t) {
       if (!e.showCrowd) return;
       let ct = J ? J.x : 1e6,
         _t = J ? J.z : 1e6;
-      for (let it = 0; it < Wt; it++) {
+      for (let it = 0; it < $.count; it++) {
         let N = Math.floor(((((et.th[it] % le) + le) % le) / le) * 720) % 720,
           St = Math.max(et.r0[it], Gt[N]);
         et.th[it] += (et.v[it] / St) * q;
@@ -571,7 +579,7 @@ function Ed(i, t) {
           $.setMatrixAt(it, Xt);
       }
       $.instanceMatrix.needsUpdate = !0;
-      for (let it = 0; it < xt; it++) {
+      for (let it = 0; it < Vt.count; it++) {
         let N = ut.z[it] < dt.gA && ut.z[it] > dt.gB && it % 3 !== 0 ? 1.6 : 1;
         (ut.z[it] += ut.dir[it] * ut.v[it] * N * q),
           ut.z[it] < dt.walkM + 0.8
