@@ -23,14 +23,28 @@
       </div>
     </div>
 
+    <div class="who mode-pick">
+      <span id="modeLabel">طريقة التدريب</span>
+      <div class="seg modes" role="radiogroup" aria-labelledby="modeLabel">
+        <button type="button" role="radio" aria-checked="false" data-mode="mobile">الجوال</button>
+        <button type="button" role="radio" aria-checked="false" data-mode="cardboard">علبة VR</button>
+        <button type="button" role="radio" aria-checked="false" data-mode="desktop">الحاسوب</button>
+        <button type="button" role="radio" aria-checked="false" data-mode="xr" hidden>النظارة</button>
+      </div>
+    </div>
+    <p class="fine mode-note" data-for="mobile" hidden>حرّك الجوال لتلتفت، وامشِ بالعصا على الشاشة.</p>
+    <p class="fine mode-note" data-for="cardboard" hidden>بعد «ابدأ» ضع الجوال أفقيًا في العلبة. اختر بالنظر إلى الزر ثانية واحدة، أو بزر العلبة، أو بيد تحكم بلوتوث.</p>
+    <p class="fine mode-note" data-for="desktop" hidden>الأسهم أو WASD للمشي، وسحب الفأرة للالتفات، والمسافة للمنسك.</p>
+    <p class="fine mode-note" data-for="xr" hidden>العصا اليسرى للمشي، واليمنى للدوران، والزناد للاختيار.</p>
+
     <div class="cta">
       <button type="button" id="startBtn" class="primary">ابدأ التدريب</button>
-      <button type="button" id="vrBtn" class="secondary" hidden>ابدأ بنظارة الواقع الافتراضي</button>
     </div>
 
     <div class="opts">
       <label class="sw"><input type="checkbox" data-opt="voice" checked><span class="track"></span><span>الإرشاد الصوتي</span></label>
       <label class="sw"><input type="checkbox" data-opt="labels" checked><span class="track"></span><span>أسماء المعالم</span></label>
+      <label class="sw"><input type="checkbox" data-opt="comfort"><span class="track"></span><span>حركة مريحة</span></label>
     </div>
     <p class="note voice-missing" hidden>لا يوجد صوت عربي على هذا الجهاز، فالإرشاد مكتوب فقط.</p>
     <p id="vrNote" class="fine">وضع النظارة يعمل حين تُفتح الصفحة من متصفح النظارة عبر رابط https.</p>
@@ -39,42 +53,38 @@
 </div>
 
 <div id="hud" hidden>
-  <div class="top">
-    <button type="button" id="menuBtn" aria-label="القائمة">
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-    </button>
+  <button type="button" id="menuBtn" aria-label="القائمة">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+  </button>
+
+  <!-- التعليمات المرئية مرسومة داخل المشهد (src/js/07-panels.js). هذه مرآة نصية لها لقارئ الشاشة. -->
+  <div class="sr-only">
     <ol id="rail" aria-label="مراحل العمرة"></ol>
-  </div>
-
-  <section id="card" aria-live="polite">
-    <div class="card-head" role="button" tabindex="0" aria-label="إظهار التعليمات أو إخفاؤها">
+    <section id="card" aria-live="polite">
       <h2 id="cardTitle"></h2>
-      <svg class="chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </div>
-    <div class="card-body">
       <p id="cardText"></p>
-      <p id="cardSay" class="sacred" hidden></p>
-      <button type="button" id="cardBtn" class="link" hidden></button>
-    </div>
-  </section>
-
-  <div id="instrument" aria-hidden="true">
-    <canvas id="mini"></canvas>
-    <div id="countLabel"></div>
-    <div id="pips" hidden></div>
+      <p id="cardSay" hidden></p>
+      <button type="button" id="cardBtn" hidden></button>
+    </section>
+    <p id="countLabel"></p>
+    <p id="toast" role="status"></p>
+    <p id="veilText" aria-live="polite"></p>
+    <button type="button" id="actBtn" disabled><span id="actLabel"></span></button>
   </div>
 
-  <div id="toast" role="status"></div>
+  <div id="joy" class="mobile-only" aria-label="عصا المشي"><div id="knob"></div></div>
 
-  <div id="joy" class="touch-only" aria-label="عصا المشي"><div id="knob"></div></div>
-
-  <div id="actions">
-    <button type="button" id="jogBtn" class="touch-only" aria-pressed="false">هرولة</button>
-    <button type="button" id="actBtn" disabled><span id="actLabel"></span><small class="mouse-only">مفتاح المسافة</small></button>
+  <div id="actions" class="mobile-only">
+    <div class="turns">
+      <button type="button" id="turnRBtn" aria-label="دُر يمينًا">⟳</button>
+      <button type="button" id="turnLBtn" aria-label="دُر يسارًا">⟲</button>
+    </div>
+    <button type="button" id="jogBtn" aria-pressed="false">هرولة</button>
   </div>
 </div>
 
-<div id="veil" aria-live="polite"><p id="veilText"></p></div>
+<div id="cardboard" aria-hidden="true"><i></i></div>
+<button type="button" id="cbExit" aria-label="الخروج من علبة VR">خروج</button>
 
 <div id="menu" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="menuTitle">
   <div class="sheet">
@@ -83,6 +93,13 @@
       <label class="sw"><input type="checkbox" data-opt="voice" checked><span class="track"></span><span>الإرشاد الصوتي</span></label>
       <label class="sw"><input type="checkbox" data-opt="labels" checked><span class="track"></span><span>أسماء المعالم</span></label>
       <label class="sw"><input type="checkbox" data-opt="crowd" checked><span class="track"></span><span>الحشود</span></label>
+      <label class="sw"><input type="checkbox" data-opt="comfort"><span class="track"></span><span>حركة مريحة</span></label>
+    </div>
+    <h3>طريقة التدريب</h3>
+    <div class="jumps switches">
+      <button type="button" data-switch="mobile">الجوال</button>
+      <button type="button" data-switch="cardboard">علبة VR</button>
+      <button type="button" data-switch="desktop">الحاسوب</button>
     </div>
     <h3>الانتقال إلى منسك</h3>
     <div class="jumps">
@@ -94,21 +111,22 @@
     </div>
     <button type="button" id="menuVr" class="secondary wide" hidden>ادخل بنظارة الواقع الافتراضي</button>
     <h3>التحكّم</h3>
-    <dl class="keys touch-only">
+    <dl class="keys mobile-only">
+      <div><dt>الالتفات</dt><dd>حرّك الجوال، أو اسحب على الشاشة، أو زرّا الدوران</dd></div>
       <div><dt>المشي</dt><dd>العصا تحت الإبهام الأيسر</dd></div>
-      <div><dt>الالتفات</dt><dd>السحب على الشاشة</dd></div>
-      <div><dt>المنسك</dt><dd>الزر الذهبي حين يضيء</dd></div>
+      <div><dt>المنسك</dt><dd>المس الزر الذهبي حين يضيء</dd></div>
       <div><dt>الهرولة</dt><dd>زر الهرولة، ويبقى مفعّلًا حتى تضغطه ثانية</dd></div>
     </dl>
-    <dl class="keys mouse-only">
+    <dl class="keys desktop-only">
       <div><dt>المشي</dt><dd>الأسهم أو <bdi>W A S D</bdi></dd></div>
-      <div><dt>الالتفات</dt><dd>سحب الفأرة، أو السهمان الأيمن والأيسر</dd></div>
-      <div><dt>المنسك</dt><dd>مفتاح المسافة</dd></div>
+      <div><dt>الالتفات</dt><dd>سحب الفأرة، أو السهمان الأيمن والأيسر (على دفعات مع «حركة مريحة»)</dd></div>
+      <div><dt>المنسك</dt><dd>مفتاح المسافة، أو النقر على الزر الذهبي</dd></div>
       <div><dt>الهرولة</dt><dd>مع الضغط على <bdi>Shift</bdi></dd></div>
       <div><dt>القائمة</dt><dd><bdi>Esc</bdi></dd></div>
     </dl>
     <dl class="keys">
-      <div><dt>في النظارة</dt><dd>العصا اليسرى للمشي، واليمنى للالتفات، والزناد الأيمن للمنسك، والأيسر للهرولة</dd></div>
+      <div><dt>علبة VR</dt><dd>النظر إلى زر ثانية واحدة يختاره، ولمس الشاشة (زر العلبة) يختار أو يبدأ المشي ويوقفه. يد التحكم: العصا اليسرى للمشي، واليمنى أو الكتفان للدوران، وA للاختيار، وB للمشي</dd></div>
+      <div><dt>في النظارة</dt><dd>العصا اليسرى للمشي، واليمنى للدوران على دفعات، والزناد الأيمن للاختيار، والأيسر للهرولة</dd></div>
     </dl>
     <div class="row">
       <button type="button" id="restartBtn" class="secondary">ابدأ من جديد</button>

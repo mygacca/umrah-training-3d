@@ -140,6 +140,9 @@ function Pd({ world: i, hud: t, player: e }) {
         case "tahallul":
           P();
           break;
+        case "done": // الزر الذهبي في الملخص: أعِد التدريب (النظارة وعلبة VR بلا قائمة)
+          n.onAgain && n.onAgain();
+          break;
         default:
           break;
       }
