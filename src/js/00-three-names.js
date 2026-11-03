@@ -1,0 +1,19 @@
+// أسماء واضحة لفئات three.js المختصرة في src/vendor/three.min.js.
+// الكود الجديد يستعمل هذه الأسماء؛ والكود المنقول ما زال يستعمل المختصرة (جدولها في CLAUDE.md).
+var Vector2 = gt,
+  Vector3 = U,
+  Quaternion = xn,
+  Euler = ti,
+  Matrix4 = ue,
+  Color = Jt,
+  Group = nn,
+  Mesh = Pt,
+  PerspectiveCamera = Je,
+  PlaneGeometry = Ve,
+  SphereGeometry = fn,
+  CylinderGeometry = Re,
+  MeshBasicMaterial = Le,
+  ShaderMaterial = rn,
+  CanvasTexture = Ui,
+  SRGBColorSpace = We,
+  BackSide = Oe;
