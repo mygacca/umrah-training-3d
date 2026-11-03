@@ -1,0 +1,13 @@
+{
+  "name": "umrah-training-3d",
+  "private": true,
+  "description": "تدريب العمرة ثلاثي الأبعاد: ملف HTML واحد يُبنى من src/",
+  "scripts": {
+    "build": "node tools/build.js",
+    "check": "node tools/build.js --check",
+    "test": "node tools/build.js --check && node --test --test-reporter=spec tests/*.test.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
