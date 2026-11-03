@@ -178,6 +178,65 @@ function runUmrah(mode) {
       }
     });
 
+    // الطبقة 0 من docs/realism-plan.md: مستوى الجودة بحسب الوضع، وميزانية رسم من نقطة ثابتة أمام الكعبة
+    test('الجودة وميزانية الرسم', async () => {
+      const q = await page.evaluate(() => ({ tier: window.__umrah.quality.tier, crowd: window.__umrah.world.crowds[0].count }));
+      const expected = { desktop: ['high', 380], mobile: ['low', 209], cardboard: ['low', 209], xr: ['xr', 266] }[mode];
+      assert.deepEqual([q.tier, q.crowd], expected, 'مستوى الجودة التلقائي');
+      if (mode === 'xr') {
+        // في النظارة لا نرسم خارج إطار WebXR؛ نتحقق من التنقيط المركزي فقط:
+        // يبدأ 0.5، ويرفعه التكيّف حتى 1 إن بطؤت الإطارات (والمحاكاة بطيئة)، ويصل إلى الرسّام
+        const f = await page.evaluate(() => [window.__umrah.quality.foveation, window.__umrah.renderer.xr.getFoveation()]);
+        assert.ok(f[0] >= 0.5 && f[0] <= 1, `التنقيط المركزي ${f[0]}`);
+        if (f[1] !== undefined) assert.equal(f[1], f[0]);
+        return;
+      }
+      await D.walkLocal([localAt(PSI_BLACK - 0.4, R)]);
+      const measure = () =>
+        page.evaluate(() => {
+          const { player, quality, scene, camera } = window.__umrah;
+          const p = player.getPos();
+          player.teleport(p.x, p.z, -p.x, -p.z); // ينظر إلى الكعبة
+          return quality.measure(scene, camera);
+        });
+      // الحدود: قياس هذه النسخة وفوقه هامش نحو 20%. إن تجاوزتها إضافة، فراجع docs/realism-plan.md قبل رفعها
+      // (في هذه الحالة: اللافتات ظاهرة، وكل لافتة أمر رسم، وحلقة الهدف وخط البداية ظاهران)
+      // قيست: الحاسوب 77 أمرًا و97 ألف مثلث (المستوى العالي)، والجوال 47 و56 ألفًا (المنخفض: 55% من الحشود)،
+      // وعلبة VR 69 و63 ألفًا لعين واحدة (نافذتها أفقية عريضة فترى أكثر)
+      const BUDGET = { desktop: { calls: 90, triangles: 115000 }, mobile: { calls: 57, triangles: 67000 }, cardboard: { calls: 83, triangles: 76000 } }[mode];
+      const day = await measure();
+      if (process.env.UMRAH_DEBUG) console.error('budget', mode, JSON.stringify(day));
+      assert.ok(day.calls <= BUDGET.calls, `أوامر الرسم ${day.calls} > ${BUDGET.calls}`);
+      assert.ok(day.triangles <= BUDGET.triangles, `المثلثات ${day.triangles} > ${BUDGET.triangles}`);
+
+      if (mode === 'desktop') {
+        // الليل من القائمة: ثريات الأروقة تظهر، والميزانية تبقى
+        await page.keyboard.press('Escape');
+        await page.click('[data-time="night"]');
+        await page.click('#menuClose');
+        assert.equal(await page.evaluate(() => window.__umrah.atmosphere.time), 'night');
+        assert.equal(await page.evaluate(() => window.__umrah.atmosphere.lamps.visible), true);
+        const night = await measure();
+        assert.ok(night.calls <= BUDGET.calls && night.triangles <= BUDGET.triangles, `ميزانية الليل ${JSON.stringify(night)}`);
+        // الجودة المتوسطة من القائمة ترسم 80% من الحشود، ثم «تلقائية» تعيد العالية
+        await page.keyboard.press('Escape');
+        await page.click('[data-quality="medium"]');
+        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.world.crowds[0].count]), ['medium', 304]);
+        await page.click('[data-quality="auto"]');
+        await page.click('[data-time="asr"]');
+        await page.click('#menuClose');
+        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.atmosphere.time, window.__umrah.atmosphere.lamps.visible]), ['high', 'asr', false]);
+        // نسبة البكسل تنخفض عن سقف المستوى حين تبقى الإطارات بطيئة ثانيتين (الرسم البرمجي هنا بطيء دائمًا)
+        await page.waitForTimeout(5000);
+        const { fps, pixelRatio, cap } = await page.evaluate(() => ({
+          fps: window.__umrah.quality.fps,
+          pixelRatio: window.__umrah.quality.pixelRatio,
+          cap: Math.min(devicePixelRatio || 1, 1.6), // سقف المستوى العالي (QUALITY_TIERS.high)
+        }));
+        if (fps < 45) assert.ok(pixelRatio < cap, `نسبة البكسل ${pixelRatio} لم تنخفض عن ${cap} مع ${fps.toFixed(1)} إطارًا/ث`);
+      }
+    });
+
     test('الطواف: سبعة أشواط من الحجر الأسود، والحِجر يُلغي الشوط، والعكس يُكتشف', async () => {
       const target = await page.evaluate(() => window.__umrah.hud.model.target);
       const weGame = Math.atan2(-target[1], target[0]);
