@@ -231,7 +231,7 @@ function Pd({ world: i, hud: t, player: e }) {
     t.setAction("", !1),
       t.fadeTo(0.88),
       t.setVeil(s.toMaqam.prayer),
-      f(g(s.toMaqam.prayer)),
+      f(s.toMaqam.title), // نص الحجاب فيه آيتان، فلا يُنطق؛ يُنطق العنوان وحده
       setTimeout(() => {
         I !== w || n.stage !== "prayer" || (t.setVeil(""), t.fadeTo(0), b("toSafa"));
       }, 5200);

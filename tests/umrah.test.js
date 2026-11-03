@@ -289,4 +289,21 @@ describe('عمرة كاملة في المتصفح', { timeout: 10 * 60 * 1000 },
     assert.match(await page.textContent('#sumNote'), /راجع التنبيهات/);
     assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
   });
+
+  test('لا يُقرأ نص شرعي بالصوت الآلي', async () => {
+    const { spoken, sacred } = await page.evaluate(() => ({ spoken: window.__spoken, sacred: [...window.__sacred] }));
+    assert.ok(spoken.length > 10, 'الصوت المزيّف لم يُستعمل');
+    // نقارن بلا تشكيل: الآيات والأذكار تُعرض مشكولة
+    const bare = (t) => t.replace(/[ً-ٰٟۖ-ۭ«»]/g, '').replace(/\s+/g, ' ').trim();
+    // بطاقة الملخص تضع «تقبّل الله منك» في خانة النص الشرعي، وهي دعاء قصير للمتدرب لا آية
+    const phrases = sacred
+      .filter((t) => /[ً-ْ]/.test(t) && bare(t).length >= 8)
+      .flatMap((t) => bare(t).split(/[،,]/))
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 8);
+    assert.ok(phrases.length > 5, 'لم تُجمع نصوص شرعية للمقارنة');
+    for (const u of spoken) {
+      for (const ph of phrases) assert.ok(!bare(u).includes(ph), `نُطق نص شرعي آليًا: «${ph}» في «${u}»`);
+    }
+  });
 });
