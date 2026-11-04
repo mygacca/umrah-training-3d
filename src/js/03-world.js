@@ -469,80 +469,13 @@ function Ed(i, t) {
     (e.setStartAid = (q) => {
       H.visible = q;
     });
-  let At = (() => {
-      let q = new Fi(0.21, 0.95, 2, 7);
-      q.translate(0, 0.685, 0), Md(q, 1, 1, 1);
-      let J = new fn(0.125, 7, 5);
-      return J.translate(0, 1.49, 0), Md(J, 0.86, 0.68, 0.55), Bs([q, J]);
-    })(),
-    Et = new Rn({ vertexColors: !0, roughness: 0.92 }),
-    jt = (q) => {
-      let J = q();
-      return J < 0.7
-        ? new Jt("#f4f3ee")
-        : J < 0.9
-          ? new Jt("#1e1e22")
-          : new Jt(["#cfc3ab", "#a9b8c9", "#b7a185", "#e4e0d4"][Math.floor(q() * 4)]);
-    },
-    Gt = vd(720),
-    Wt = 380,
-    $ = new kn(At, Et, Wt);
-  $.instanceMatrix.setUsage(jo);
-  let et = {
-    r0: new Float32Array(Wt),
-    th: new Float32Array(Wt),
-    v: new Float32Array(Wt),
-    ph: new Float32Array(Wt),
-    s: new Float32Array(Wt),
-  };
-  {
-    let q = Xr(5);
-    for (let J = 0; J < Wt; J++)
-      (et.r0[J] = 9.2 + 30 * Math.pow(q(), 1.7)),
-        (et.th[J] = q() * le),
-        (et.v[J] = 0.85 + q() * 0.6),
-        (et.ph[J] = q() * le),
-        (et.s[J] = 0.93 + q() * 0.14),
-        $.setColorAt(J, jt(q));
-  }
-  i.add($);
-  let xt = 140,
-    Vt = new kn(At, Et, xt);
-  Vt.instanceMatrix.setUsage(jo);
-  let ut = {
-    x: new Float32Array(xt),
-    z: new Float32Array(xt),
-    dir: new Float32Array(xt),
-    v: new Float32Array(xt),
-    ph: new Float32Array(xt),
-    s: new Float32Array(xt),
-  };
-  {
-    let q = Xr(9);
-    for (let J = 0; J < xt; J++) {
-      ut.dir[J] = q() < 0.5 ? -1 : 1;
-      let ct = q() * 6.4;
-      (ut.x[J] = ut.dir[J] < 0 ? 67.4 + ct : 76.4 + ct),
-        (ut.z[J] = dt.walkM + 1 + q() * (dt.walkS - dt.walkM - 2)),
-        (ut.v[J] = 0.9 + q() * 0.6),
-        (ut.ph[J] = q() * le),
-        (ut.s[J] = 0.93 + q() * 0.14),
-        Vt.setColorAt(J, jt(q));
-    }
-  }
-  i.add(Vt);
-  let Xt = new ue(),
-    ae = new xn(),
-    rt = new U(),
-    ot = new U(),
-    ft = new U(0, 1, 0);
-  e.crowds = [$, Vt];
+  // الحشود في 03-crowds.js: هيئات تمشي، وبطاقات للبعيدين، وبقع ظل
+  let crowds = createCrowds(i);
+  e.crowds = crowds;
   // مستويات الجودة (05-quality.js) ترسم جزءًا من الحشود فقط
-  e.setCrowdFraction = (f) => {
-    ($.count = Math.round(Wt * f)), (Vt.count = Math.round(xt * f));
-  };
+  e.setCrowdFraction = (f) => crowds.setFraction(f);
   e.setCrowd = (q) => {
-    (e.showCrowd = q), ($.visible = q), (Vt.visible = q);
+    (e.showCrowd = q), crowds.setVisible(q);
   };
   let ht = 0;
   return (
@@ -558,47 +491,7 @@ function Ed(i, t) {
         let it = 1 + 0.12 * Math.sin(ht * 3.2);
         j.scale.set(it, it, 1), (tt.material.opacity = 0.1 + 0.05 * Math.sin(ht * 3.2));
       }
-      if (!e.showCrowd) return;
-      let ct = J ? J.x : 1e6,
-        _t = J ? J.z : 1e6;
-      for (let it = 0; it < $.count; it++) {
-        let N = Math.floor(((((et.th[it] % le) + le) % le) / le) * 720) % 720,
-          St = Math.max(et.r0[it], Gt[N]);
-        et.th[it] += (et.v[it] / St) * q;
-        let Tt = Math.cos(et.th[it]) * St,
-          R = -Math.sin(et.th[it]) * St,
-          _ = Tt - ct,
-          z = R - _t,
-          k = Math.hypot(_, z);
-        k < 1.4 && k > 0.001 && ((Tt += (_ / k) * (1.4 - k)), (R += (z / k) * (1.4 - k)));
-        let Y = 0.035 * Math.abs(Math.sin(et.ph[it] + ht * 5.5 * et.v[it]));
-        ae.setFromAxisAngle(ft, et.th[it]),
-          rt.set(Tt, Y, R),
-          ot.set(1, et.s[it], 1),
-          Xt.compose(rt, ae, ot),
-          $.setMatrixAt(it, Xt);
-      }
-      $.instanceMatrix.needsUpdate = !0;
-      for (let it = 0; it < Vt.count; it++) {
-        let N = ut.z[it] < dt.gA && ut.z[it] > dt.gB && it % 3 !== 0 ? 1.6 : 1;
-        (ut.z[it] += ut.dir[it] * ut.v[it] * N * q),
-          ut.z[it] < dt.walkM + 0.8
-            ? ((ut.dir[it] = 1), (ut.x[it] = 76.4 + (ut.x[it] - 67.4)))
-            : ut.z[it] > dt.walkS - 0.8 && ((ut.dir[it] = -1), (ut.x[it] = 67.4 + (ut.x[it] - 76.4)));
-        let St = ut.x[it],
-          Tt = ut.z[it],
-          R = St - ct,
-          _ = Tt - _t,
-          z = Math.hypot(R, _);
-        z < 1.4 && z > 0.001 && ((St += (R / z) * (1.4 - z)), (Tt += (_ / z) * (1.4 - z)));
-        let k = 0.035 * Math.abs(Math.sin(ut.ph[it] + ht * 5.5 * ut.v[it] * N));
-        ae.setFromAxisAngle(ft, ut.dir[it] > 0 ? Math.PI : 0),
-          rt.set(St, k, Tt),
-          ot.set(1, ut.s[it], 1),
-          Xt.compose(rt, ae, ot),
-          Vt.setMatrixAt(it, Xt);
-      }
-      Vt.instanceMatrix.needsUpdate = !0;
+      crowds.update(q, J);
     }),
     (e.corners = Ln),
     e
