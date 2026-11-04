@@ -22,9 +22,11 @@ function createKeyboard() {
 // السحب على اللوحة للالتفات، واللمسة أو النقرة القصيرة.
 function createPointer(canvas) {
   const active = new Map();
-  const p = { enabled: false, dragYaw: 0, dragPitch: 0, onTap: null };
+  // claim(e): يأخذ اللمسة غيرُ السحب (عصا المشي العائمة في الجوال) إن أعاد true
+  const p = { enabled: false, dragYaw: 0, dragPitch: 0, onTap: null, claim: null };
   canvas.addEventListener("pointerdown", (e) => {
     if (!p.enabled) return;
+    if (p.claim && p.claim(e)) return;
     active.set(e.pointerId, { x: e.clientX, y: e.clientY, t0: performance.now(), touch: e.pointerType !== "mouse", moved: 0 });
     canvas.setPointerCapture?.(e.pointerId);
   });
@@ -50,7 +52,8 @@ function createPointer(canvas) {
   canvas.addEventListener("pointercancel", (e) => end(e, false));
   // يمنع «النقر الشبحي» بعد اللمس: لولاه لوقع النقر على ما يظهر تحت الإصبع بعد الضغطة
   // (مثل نافذة الملخص التي يفتحها لمس الزر الذهبي)
-  canvas.addEventListener("touchend", (e) => e.preventDefault(), { passive: false });
+  // وبعد السحب لا يُلغى touchend (cancelable=false)، ومحاولة إلغائه خطأ في وحدة التحكم؛ ولا نقر بعد السحب أصلًا
+  canvas.addEventListener("touchend", (e) => e.cancelable && e.preventDefault(), { passive: false });
   p.takeDrag = () => {
     const d = [p.dragYaw, p.dragPitch];
     p.dragYaw = p.dragPitch = 0;
@@ -59,38 +62,47 @@ function createPointer(canvas) {
   return p;
 }
 
-// عصا المشي على الشاشة تحت الإبهام الأيسر.
+// عصا المشي تحت الإبهام الأيسر. عائمة: begin(e) يضع مركزها حيث لمس الإبهام (10-modes.js يقرّر أي لمسة لها)،
+// وتعود إلى مكانها أسفل اليسار حين يُرفع. فلا يحتاج اللاعب أن يصيب العصا بدقة.
 function createJoystick(el, knob) {
-  const j = { enabled: false, x: 0, y: 0, id: null };
+  const j = { enabled: false, x: 0, y: 0, id: null, cx: 0, cy: 0 };
   const R = 46;
   const show = (x, y) => (knob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`);
   const set = (e) => {
-    const r = el.getBoundingClientRect();
-    let x = e.clientX - (r.left + r.width / 2);
-    let y = e.clientY - (r.top + r.height / 2);
+    let x = e.clientX - j.cx;
+    let y = e.clientY - j.cy;
     const d = Math.hypot(x, y);
     if (d > R) (x = (x / d) * R), (y = (y / d) * R);
     show(x, y);
     j.x = x / R;
     j.y = -y / R;
   };
-  el.addEventListener("pointerdown", (e) => {
-    if (!j.enabled) return;
+  j.begin = (e) => {
+    if (!j.enabled || j.id !== null) return false;
     j.id = e.pointerId;
-    el.setPointerCapture?.(e.pointerId);
+    const half = el.getBoundingClientRect().width / 2;
+    j.cx = Math.max(half + 4, Math.min(innerWidth - half - 4, e.clientX));
+    j.cy = Math.max(half + 4, Math.min(innerHeight - half - 4, e.clientY));
+    el.style.left = `${j.cx - half}px`;
+    el.style.top = `${j.cy - half}px`;
+    el.style.bottom = "auto";
     el.classList.add("active");
     set(e);
-  });
-  el.addEventListener("pointermove", (e) => e.pointerId === j.id && set(e));
+    return true;
+  };
+  el.addEventListener("pointerdown", (e) => j.begin(e) && el.setPointerCapture?.(e.pointerId));
+  // على النافذة: الإصبع يبدأ على اللوحة ثم يتحرك فوق العصا نفسها
+  addEventListener("pointermove", (e) => e.pointerId === j.id && set(e));
   const end = (e) => {
     if (e.pointerId !== j.id) return;
     j.id = null;
     j.x = j.y = 0;
     show(0, 0);
     el.classList.remove("active");
+    el.style.left = el.style.top = el.style.bottom = "";
   };
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", end);
+  addEventListener("pointerup", end);
+  addEventListener("pointercancel", end);
   return j;
 }
 

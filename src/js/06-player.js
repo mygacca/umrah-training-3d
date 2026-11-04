@@ -124,7 +124,7 @@ function createPlayer({ scene, camera, renderer }) {
     lastValid = null;
   };
 
-  // cmd: { forward, strafe } بين -1 و1
+  // cmd: { forward, strafe } بين -1 و1، و dir: [dx, dz] اتجاه «الأمام» إن لم يكن اتجاه النظر (المشي الموجّه في 06-guide.js)
   p.update = (dt, cmd = {}) => {
     applyLook();
     rig.updateMatrixWorld(true);
@@ -136,7 +136,8 @@ function createPlayer({ scene, camera, renderer }) {
     if (len > 1) (fwd /= len), (side /= len);
     if (len > 0.08) {
       let fx, fz;
-      if (p.look === "mouse") (fx = -Math.sin(p.yaw)), (fz = -Math.cos(p.yaw));
+      if (cmd.dir) [fx, fz] = cmd.dir;
+      else if (p.look === "mouse") (fx = -Math.sin(p.yaw)), (fz = -Math.cos(p.yaw));
       else {
         camera.getWorldDirection(dir);
         let h = Math.hypot(dir.x, dir.z);

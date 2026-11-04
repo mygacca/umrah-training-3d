@@ -1,7 +1,9 @@
 // أوضاع التدريب الأربعة. كلها تشترك في المشهد (03-world) والمنطق (09-game) واللاعب (06-player) واللوحات (07-panels).
 // الوضع يقرّر: من أين يأتي النظر والمشي، وكيف يُختار الزر، وكيف يُرسم الإطار.
 //
-//   mobile     الجوال: النظر بمستشعر الحركة (أو السحب إن لم يوجد)، والمشي بالعصا، واللمس على اللوحات
+//   mobile     الجوال: النظر بالسحب (والمستشعر اختياري)، والمشي بعصا عائمة تحت الإبهام الأيسر، واللمس على اللوحات.
+//              والمشي الموجّه (06-guide.js): العصا إلى الأمام تمشي على مسار المنسك والكاميرا تلتفت معه،
+//              و«مشي مستمر» يمشي وحده حتى ما يحتاج منسكًا
 //   cardboard  علبة VR: صورتان جنبًا إلى جنب، والنظر بالمستشعر، والاختيار بالنظر ثانية واحدة أو بلمس الشاشة،
 //              والمشي بزر «امشِ» أو بيد تحكم بلوتوث (Gamepad API أو أسهم لوحة المفاتيح)
 //   desktop    الحاسوب: الأسهم وWASD وسحب الفأرة، والمسافة للمنسك، والنقر على اللوحات
@@ -10,18 +12,28 @@ var MODE_NAMES = { mobile: "الجوال", cardboard: "علبة VR", desktop: "�
 var DWELL_SECONDS = 1; // مدة النظر إلى زر لاختياره في علبة VR
 var CARDBOARD_IPD = 0.064;
 var CARDBOARD_FOV = 75; // زاوية الرؤية الرأسية لكل عين
+var AUTO_TURN_DELAY = 2; // ثانيتان بعد آخر سحب أو دوران قبل أن تلتفت الكاميرا مع المسار
+var AUTO_TURN_RATE = 3; // سرعة التفات الكاميرا مع المسار (لكل ثانية)
 
-function createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle }) {
+function createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle, world }) {
   const { keyboard, pointer, joystick, sensor, gamepad } = input;
   const m = {
     mode: "desktop",
     comfort: false, // الحركة المريحة: تعتيم الأطراف، والدوران على دفعات بالأسهم
     comfortChoice: null, // اختيار المستخدم إن غيّره، وإلا فالافتراضي بحسب الوضع
     walking: false, // المشي التلقائي في علبة VR
+    gyro: false, // الجوال: النظر بتحريك الجوال. اختياري، والسحب هو الافتراضي
+    guide: true, // الجوال: المشي الموجّه
+    autoWalk: false, // الجوال: «مشي مستمر»
+    guideDir: null, // اتجاه المشي الموجّه في آخر إطار (للاختبار)
     gaze: { id: null, t: 0, consumed: false },
     rayHover: null,
     onChange: null,
+    onAutoWalk: null,
   };
+  const guide = createRouteGuide({ game, hud, laneAt: world.crowds.laneAt });
+  // حالة المساعدة في الجوال. clock بزمن الإطارات لا بالساعة، فيعمل في الاختبار مع step()
+  const assist = { clock: 0, dragT: -1e9, turnedAt: player.turnedAt, pushing: false, held: false, key: "", enabled: false, stuck: 0, faceTo: null };
   const snapPad = createSnapLatch();
   const snapXR = createSnapLatch();
   let xrAPrev = false;
@@ -42,6 +54,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
   ray.renderOrder = 1003;
 
   const isVR = (mode = m.mode) => mode === "xr" || mode === "cardboard";
+  const useSensor = (mode = m.mode) => mode === "cardboard" || (mode === "mobile" && m.gyro);
 
   m.set = (mode) => {
     m.mode = mode;
@@ -52,6 +65,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     pointer.enabled = mode !== "xr";
     joystick.enabled = mode === "mobile";
     m.walking = false;
+    m.setAutoWalk(false);
     panels.walking = false;
     panels.setKind(vr ? "board" : "flat", {
       hint: mode === "desktop" ? "مفتاح المسافة" : "",
@@ -62,7 +76,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
           : "انظر إلى زر ثانية واحدة، أو المس الشاشة",
       cardboardButtons: mode === "cardboard",
     });
-    if (mode !== "xr") player.setLook(mode !== "desktop" && sensor.hasData() ? "sensor" : "mouse");
+    if (mode !== "xr") player.setLook(useSensor(mode) && sensor.hasData() ? "sensor" : "mouse");
     reticle.set(false);
     ray.visible = false;
     m.resize();
@@ -78,6 +92,22 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     m.walking = !m.walking;
     panels.walking = m.walking;
     panels.markDirty();
+  };
+  // يُستدعى من ضغطة المستخدم على المفتاح: iOS يطلب إذن المستشعر من داخلها
+  m.setGyro = (on) => {
+    m.gyro = on;
+    if (on) sensor.start();
+    else if (m.mode === "mobile" && player.look === "sensor") player.setLook("mouse");
+  };
+  m.setGuide = (on) => {
+    m.guide = on;
+    guide.reset();
+  };
+  m.setAutoWalk = (on) => {
+    if (m.autoWalk === on) return;
+    m.autoWalk = on;
+    assist.stuck = 0;
+    m.onAutoWalk && m.onAutoWalk(on);
   };
 
   // «اختر»: الزر تحت النظر أو الذراع إن وُجد، وإلا فالمنسك الحالي
@@ -109,6 +139,14 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     const hit = panels.hitScreen(x, y);
     if (hit && hit.id) panels.press(hit.id);
   };
+  // الجوال: لمسة في النصف الأيسر السفلي تبدأ عصا المشي تحت الإبهام، إلا إن وقعت على لوحة. وما سواها سحب للالتفات
+  pointer.claim = (e) =>
+    m.mode === "mobile" &&
+    player.enabled &&
+    e.clientX < innerWidth * 0.5 &&
+    e.clientY > innerHeight * 0.4 &&
+    !panels.hitScreen(e.clientX, e.clientY) &&
+    joystick.begin(e);
 
   // أحداث زناد النظارة
   player.controllers.forEach((c) => {
@@ -139,13 +177,14 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
       xrAPrev = x.a;
     } else {
       // النظر
-      if ((mode === "mobile" || mode === "cardboard") && sensor.hasData()) {
+      if (useSensor(mode) && sensor.hasData()) {
         sensor.read(player.sensorQuat);
         if (player.look !== "sensor") player.setLook("sensor");
       }
       const [dy, dp] = pointer.takeDrag();
       // في علبة VR لا سحب، إلا إن لم يوجد مستشعر
-      if (player.enabled && (mode !== "cardboard" || player.look === "mouse")) {
+      const dragged = player.enabled && (mode !== "cardboard" || player.look === "mouse") && (dy !== 0 || dp !== 0);
+      if (dragged) {
         player.yaw += dy;
         if (player.look === "mouse") player.pitch = Math.max(-1.25, Math.min(1.1, player.pitch + dp));
       }
@@ -169,9 +208,64 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
         if (pad.edge(1) && mode === "cardboard") m.toggleWalk();
       }
       if (mode === "cardboard" && m.walking) fwd = Math.max(fwd, 1);
+      if (mode === "mobile") {
+        if (m.autoWalk && joystick.y < -0.3) m.setAutoWalk(false); // العصا إلى الخلف توقفه
+        const a = mobileAssist(dt, fwd, side, dragged);
+        return player.update(dt, { forward: a.fwd, strafe: side, dir: a.dir });
+      }
     }
     player.update(dt, { forward: fwd, strafe: side });
   };
+
+  // ——— الجوال: المشي الموجّه، والمشي المستمر، والتفات الكاميرا مع المسار ———
+  function mobileAssist(dt, fwd, side, dragged) {
+    const a = assist;
+    a.clock += dt;
+    // السحب أو زر الدوران: يلتفت اللاعب بنفسه، فلا تلتفت الكاميرا وحدها ثانيتين
+    if (dragged || player.turnedAt !== a.turnedAt) (a.dragT = a.clock), (a.turnedAt = player.turnedAt), (a.faceTo = null);
+    // الوصول إلى ما يحتاج منسكًا (أضاء الزر الذهبي خارج الطواف، أو تغيّر المنسك أو الهدف):
+    // يقف المشي المستمر، ويقف من يدفع العصا حتى يرفع إبهامه، ثم ينظر إلى الحجر الأسود أو الكعبة
+    const key = `${game.stage}|${hud.model.target}`;
+    const on = hud.model.action.enabled;
+    const arrived = key !== a.key || (on && !a.enabled && game.stage !== "tawaf");
+    a.key = key;
+    a.enabled = on;
+    if (arrived) {
+      const walking = a.pushing || m.autoWalk;
+      m.setAutoWalk(false);
+      a.held = a.pushing;
+      a.faceTo = walking && m.guide ? guide.arrivalFace(game.stage) : null;
+    }
+    if (m.autoWalk) fwd = Math.max(fwd, 1);
+    const pushing = fwd > 0.08;
+    const fresh = pushing && !a.pushing;
+    a.pushing = pushing;
+    if (!pushing) a.held = false;
+    if (a.held) fwd = 0;
+    let dir = null;
+    if (m.guide && pushing && !a.held && player.enabled) {
+      const p = player.getPos();
+      const h = player.headingYaw();
+      dir = guide.direction(p.x, p.z, -Math.sin(h), -Math.cos(h), fresh, side);
+    }
+    m.guideDir = dir;
+    // الكاميرا تلتفت مع المسار، أو إلى الحجر الأسود بعد الوصول. لا مع المستشعر: الجوال في يد اللاعب يدير النظر
+    let want = null;
+    const p = dir || a.faceTo ? player.getPos() : null;
+    if (dir) (want = Math.atan2(-dir[0], -dir[1])), (a.faceTo = null);
+    else if (a.faceTo && !pushing) want = Math.atan2(-(a.faceTo[0] - p.x), -(a.faceTo[1] - p.z));
+    if (want !== null && player.look === "mouse" && player.enabled && a.clock - a.dragT > AUTO_TURN_DELAY) {
+      const diff = ll(want - player.yaw);
+      player.yaw += diff * Math.min(1, dt * AUTO_TURN_RATE);
+      if (a.faceTo && Math.abs(diff) < 0.02) a.faceTo = null;
+    }
+    // المشي المستمر يقف إن علق اللاعب (جدار، أو اتجاه بلا مسار)
+    if (m.autoWalk && player.enabled) {
+      a.stuck = player.speed < 0.3 ? a.stuck + dt : 0;
+      if (a.stuck > 1.2) m.setAutoWalk(false);
+    }
+    return { fwd, dir };
+  }
 
   // ——— بعد تحديث اللوحات: النظر أو الذراع على الأزرار، وتعتيم الأطراف ———
   const o = new Vector3();
@@ -246,7 +340,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
   // يُستدعى من ضغطة «ابدأ» لأن المتصفح يشترط ضغطة المستخدم لإذن المستشعر وملء الشاشة وجلسة النظارة
   m.enter = async (mode) => {
     if (mode === "xr") return m.enterXR();
-    if (mode === "mobile" || mode === "cardboard") sensor.start();
+    if (useSensor(mode)) sensor.start();
     if (mode === "cardboard") {
       try {
         await document.documentElement.requestFullscreen?.();

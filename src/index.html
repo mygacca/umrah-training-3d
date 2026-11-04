@@ -32,7 +32,14 @@
         <button type="button" role="radio" aria-checked="false" data-mode="xr" hidden>النظارة</button>
       </div>
     </div>
-    <p class="fine mode-note" data-for="mobile" hidden>حرّك الجوال لتلتفت، وامشِ بالعصا على الشاشة.</p>
+    <div class="mode-note" data-for="mobile" hidden>
+      <p class="fine">ضع إبهامك الأيسر في أي مكان أسفل يسار الشاشة لتمشي، واسحب على الشاشة لتلتفت.</p>
+      <div class="opts">
+        <label class="sw"><input type="checkbox" data-opt="guide" checked><span class="track"></span><span>المشي الموجّه</span></label>
+        <label class="sw"><input type="checkbox" data-opt="gyro"><span class="track"></span><span>النظر بتحريك الجوال</span></label>
+      </div>
+      <p class="fine">المشي الموجّه: ادفع العصا إلى الأمام فتمشي على مسار المنسك وتلتفت معه.</p>
+    </div>
     <p class="fine mode-note" data-for="cardboard" hidden>بعد «ابدأ» ضع الجوال أفقيًا في العلبة. اختر بالنظر إلى الزر ثانية واحدة، أو بزر العلبة، أو بيد تحكم بلوتوث.</p>
     <p class="fine mode-note" data-for="desktop" hidden>الأسهم أو WASD للمشي، وسحب الفأرة للالتفات، والمسافة للمنسك.</p>
     <p class="fine mode-note" data-for="xr" hidden>العصا اليسرى للمشي، واليمنى للدوران، والزناد للاختيار.</p>
@@ -79,6 +86,7 @@
       <button type="button" id="turnRBtn" aria-label="دُر يمينًا">⟳</button>
       <button type="button" id="turnLBtn" aria-label="دُر يسارًا">⟲</button>
     </div>
+    <button type="button" id="autoWalkBtn" aria-pressed="false">مشي مستمر</button>
     <button type="button" id="jogBtn" aria-pressed="false">هرولة</button>
   </div>
 </div>
@@ -94,6 +102,8 @@
       <label class="sw"><input type="checkbox" data-opt="labels" checked><span class="track"></span><span>أسماء المعالم</span></label>
       <label class="sw"><input type="checkbox" data-opt="crowd" checked><span class="track"></span><span>الحشود</span></label>
       <label class="sw"><input type="checkbox" data-opt="comfort"><span class="track"></span><span>حركة مريحة</span></label>
+      <label class="sw mobile-only"><input type="checkbox" data-opt="guide" checked><span class="track"></span><span>المشي الموجّه</span></label>
+      <label class="sw mobile-only"><input type="checkbox" data-opt="gyro"><span class="track"></span><span>النظر بتحريك الجوال</span></label>
     </div>
     <h3>وقت المشهد</h3>
     <div class="jumps choices">
@@ -131,8 +141,9 @@
     <button type="button" id="menuVr" class="secondary wide" hidden>ادخل بنظارة الواقع الافتراضي</button>
     <h3>التحكّم</h3>
     <dl class="keys mobile-only">
-      <div><dt>الالتفات</dt><dd>حرّك الجوال، أو اسحب على الشاشة، أو زرّا الدوران</dd></div>
-      <div><dt>المشي</dt><dd>العصا تحت الإبهام الأيسر</dd></div>
+      <div><dt>الالتفات</dt><dd>اسحب على الشاشة، أو زرّا الدوران، أو حرّك الجوال إن فعّلت «النظر بتحريك الجوال»</dd></div>
+      <div><dt>المشي</dt><dd>ضع إبهامك الأيسر في أي مكان أسفل يسار الشاشة واسحبه. ومع «المشي الموجّه» يتبع المشي مسار المنسك وتلتفت الكاميرا معه</dd></div>
+      <div><dt>مشي مستمر</dt><dd>يمشي وحده حتى ما يحتاج منسكًا، ويقف بالزر نفسه أو بسحب العصا إلى الخلف</dd></div>
       <div><dt>المنسك</dt><dd>المس الزر الذهبي حين يضيء</dd></div>
       <div><dt>الهرولة</dt><dd>زر الهرولة، ويبقى مفعّلًا حتى تضغطه ثانية</dd></div>
     </dl>

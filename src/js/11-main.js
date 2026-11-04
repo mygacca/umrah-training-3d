@@ -38,7 +38,7 @@ var input = {
 };
 var vignette = createComfortVignette(camera);
 var reticle = createGazeReticle(camera);
-var modes = createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle });
+var modes = createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle, world });
 
 // ——— الجودة وأوقات المشهد (الطبقتان 0 و1 من docs/realism-plan.md) ———
 var quality = createQuality({ renderer, world });
@@ -155,6 +155,25 @@ bindOpt("voice", (on) => hud.setVoice(on));
 bindOpt("labels", (on) => world.setLabels(on));
 bindOpt("crowd", (on) => world.setCrowd(on));
 bindOpt("comfort", (on) => modes.setComfort(on));
+// الجوال: النظر بتحريك الجوال (اختياري، والسحب هو الافتراضي)، والمشي الموجّه (مفعّل افتراضيًا). يُحفظان
+function savedFlag(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === "1" || v === "0") return v === "1";
+  } catch {}
+  return fallback;
+}
+function saveFlag(key, on) {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {}
+}
+modes.gyro = savedFlag("umrah.gyro", false);
+modes.setGuide(savedFlag("umrah.guide", true));
+syncOpt("gyro", modes.gyro);
+syncOpt("guide", modes.guide);
+bindOpt("gyro", (on) => (modes.setGyro(on), saveFlag("umrah.gyro", on)));
+bindOpt("guide", (on) => (modes.setGuide(on), saveFlag("umrah.guide", on)));
 var refreshVoice = () => {
   const ok = hud.voiceAvailable();
   document.querySelectorAll('input[data-opt="voice"]').forEach((e) => {
@@ -171,7 +190,7 @@ if ("speechSynthesis" in window) speechSynthesis.addEventListener?.("voiceschang
 
 // ——— البدء ———
 var startHints = {
-  mobile: "حرّك الجوال لتلتفت، وامشِ بالعصا تحت إبهامك الأيسر، والمس الزر الذهبي للمنسك.",
+  mobile: "ضع إبهامك الأيسر أسفل الشاشة لتمشي، واسحب بالأيمن لتلتفت، والمس الزر الذهبي للمنسك.",
   cardboard: "انظر إلى زر ثانية واحدة لتختاره، والمس الشاشة لتمشي أو تقف.",
   desktop: "امشِ بالأسهم أو بمفاتيح WASD، والتفت بسحب الفأرة، والمسافة للمنسك.",
   xr: "",
@@ -233,6 +252,11 @@ $id("jogBtn").addEventListener("click", () => {
   player.jogToggle = !player.jogToggle;
   hud.setJog(player.jogToggle);
 });
+$id("autoWalkBtn").addEventListener("click", () => modes.setAutoWalk(!modes.autoWalk));
+modes.onAutoWalk = (on) => {
+  $id("autoWalkBtn").classList.toggle("on", on);
+  $id("autoWalkBtn").setAttribute("aria-pressed", on ? "true" : "false");
+};
 $id("turnLBtn").addEventListener("click", () => player.snapTurn(1));
 $id("turnRBtn").addEventListener("click", () => player.snapTurn(-1));
 $id("menuBtn").addEventListener("click", () => {
