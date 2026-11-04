@@ -60,6 +60,24 @@ document.querySelectorAll("[data-quality]").forEach((b) =>
   }),
 );
 markChoice("data-quality", quality.choice);
+// كثافة الحشود: يختارها المستخدم، ولا تتجاوز ما يسمح به مستوى الجودة
+function setDensity(v) {
+  world.crowds.setDensity(v);
+  markChoice("data-density", String(v));
+  try {
+    localStorage.setItem("umrah.density", String(v));
+  } catch {}
+}
+document.querySelectorAll("[data-density]").forEach((b) => b.addEventListener("click", () => setDensity(+b.dataset.density)));
+setDensity(
+  (() => {
+    try {
+      const v = +localStorage.getItem("umrah.density");
+      if ([0.35, 0.65, 1].includes(v)) return v;
+    } catch {}
+    return 1;
+  })(),
+);
 atmosphere.setTime(
   (() => {
     const q = new URLSearchParams(location.search).get("time");
