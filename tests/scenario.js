@@ -604,6 +604,61 @@ function runUmrah(mode) {
         assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
       });
 
+    // «تعلّم سريع»: زر البطاقة يمشي المقاطع الطويلة، وكل منسك ما زال بزره
+    if (mode === 'desktop' || mode === 'mobile')
+      test('تعلّم سريع: عمرة كاملة بزر البطاقة، ولا تُختصر خطوة', async () => {
+        const tap = (sel) => (M.touch ? page.tap(sel) : page.click(sel));
+        // من الملخص: «أعِد التدريب»، ثم «تعلّم سريع» من القائمة
+        await tap('#againBtn');
+        if (mode === 'desktop') await page.keyboard.press('Escape');
+        else await tap('#menuBtn');
+        await tap('#menu label:has(input[data-opt="fast"])');
+        await tap('#menuClose');
+        assert.equal(await page.evaluate(() => window.__umrah.fast.enabled), true);
+        const card = () => page.evaluate(() => window.__umrah.hud.model.cardBtn);
+        await D.act('انوِ العمرة');
+        await D.act('لبّيك');
+        await page.waitForFunction(() => window.__umrah.hud.model.cardBtn === 'امشِ إلى خط البداية');
+        await D.press('secondary');
+        // يقف عند الخط والزر الذهبي مضيء: التكبير على اللاعب
+        await D.act('أشِر وكبّر');
+        for (let k = 1; k <= 7; k++) {
+          await page.waitForFunction(() => window.__umrah.hud.model.cardBtn === 'أكمل الشوط'); // البطاقة تتغير في الإطار التالي
+          await D.press('secondary');
+          if (k < 7) await D.act('الله أكبر');
+          else await page.waitForFunction(() => window.__umrah.game.stage === 'toMaqam', null, { timeout: 15000 });
+        }
+        await page.waitForFunction(() => window.__umrah.hud.model.cardBtn === 'امشِ إلى خلف المقام');
+        await D.press('secondary');
+        await D.act('صلِّ ركعتين');
+        await page.waitForFunction(() => window.__umrah.game.stage === 'toSafa', null, { timeout: 15000 });
+        assert.equal(await card(), 'انتقل إلى الصفا مباشرة', 'زر المنسك نفسه يبقى في البطاقة');
+        await D.press('secondary');
+        await D.act('ابدأ السعي');
+        for (let lap = 1; lap <= 7; lap++) {
+          await D.press('secondary');
+          if (lap < 7) {
+            await D.act('ادع'); // يقف عند الطرف والدعاء على اللاعب
+            assert.equal((await D.dbg()).A.lap, lap, `شوط السعي ${lap}`);
+          } else await page.waitForFunction(() => window.__umrah.game.stage === 'tahallul', null, { timeout: 15000 });
+        }
+        await D.act('حلقتُ أو قصّرتُ');
+        await page.waitForFunction(() => window.__umrah.game.stage === 'done');
+        const rows = Object.fromEntries(
+          await page.$$eval('#sumRows div', (ds) => ds.map((d) => [d.querySelector('dt').textContent, d.querySelector('dd').textContent])),
+        );
+        assert.equal(rows['أشواط الطواف المحتسبة'], '٧ من ٧');
+        assert.equal(rows['أشواط أُعيدت بسبب دخول الحِجر'], '٠');
+        assert.equal(rows['تنبيهات عكس الاتجاه'], '٠');
+        assert.equal(rows['التكبير عند محاذاة الحجر الأسود'], '٧ من ٧');
+        assert.equal(rows['الوقوف للدعاء على الصفا والمروة'], '٧ من ٧');
+        // الرَّمَل والإسراع بين العلمين محسوبان كما مشى: بلا هرولة فصفر، لا «—»
+        assert.equal(rows['الرَّمَل في الأشواط الثلاثة الأولى'], '٠٪');
+        assert.equal(rows['الإسراع بين العلمين الأخضرين'], '٠٪');
+        assert.match(await page.textContent('#sumNote'), /بلا أخطاء/);
+        assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
+      });
+
     test('لا يُقرأ نص شرعي بالصوت الآلي', async () => {
       const { spoken, sacred } = await page.evaluate(() => ({ spoken: window.__spoken, sacred: [...window.__sacred] }));
       assert.ok(spoken.length > 10, 'الصوت المزيّف لم يُستعمل');
