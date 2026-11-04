@@ -287,50 +287,16 @@ function createAtmosphere({ scene, renderer, world }) {
   light.position.y = 0.022;
   light.visible = false;
 
-  // بقعة ظل تحت كل حاجّ: InstancedMesh يشارك مصفوفات الحشد نفسها، فلا حساب إضافي على المعالج
-  const blobCanvas = document.createElement("canvas");
-  blobCanvas.width = blobCanvas.height = 64;
-  {
-    const c = blobCanvas.getContext("2d");
-    const g = c.createRadialGradient(32, 32, 4, 32, 32, 32);
-    g.addColorStop(0, "rgba(0,0,0,0.5)");
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    c.fillStyle = g;
-    c.fillRect(0, 0, 64, 64);
-  }
-  const blobGeo = new PlaneGeometry(0.95, 0.95);
-  blobGeo.rotateX(-Math.PI / 2);
-  blobGeo.translate(0, 0.025, 0);
-  const blobMat = new MeshBasicMaterial({ map: new CanvasTexture(blobCanvas), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  const blobs = world.crowds.map((crowd) => {
-    const b = new kn(blobGeo, blobMat, crowd.instanceMatrix.count);
-    b.instanceMatrix = crowd.instanceMatrix;
-    b.frustumCulled = false;
-    b.renderOrder = 3;
-    scene.add(b);
-    // ألوان الحجاج الأصلية، تُضرب في عامل الظل
-    return { b, crowd, base: crowd.instanceColor.array.slice() };
-  });
-  let shadeTimer = 0;
-  const shadeCrowds = () => {
-    for (const { crowd, base } of blobs) {
-      const m = crowd.instanceMatrix.array;
-      const col = crowd.instanceColor.array;
-      for (let i = 0; i < crowd.count; i++) {
-        let f = 1;
-        if (shade) {
-          const u = Math.floor(((m[i * 16 + 12] + GROUND_R) / (2 * GROUND_R)) * SHADE_RES);
-          const v = Math.floor(((m[i * 16 + 14] + GROUND_R) / (2 * GROUND_R)) * SHADE_RES);
-          // في الظل الكامل يغيب ضوء الشمس (نحو 60% من إضاءة الحاجّ هنا) ويبقى ضوء السماء
-          if (u >= 0 && v >= 0 && u < SHADE_RES && v < SHADE_RES) f = Math.max(0.35, 1 - 0.6 * (shade[v * SHADE_RES + u] / shadeFull));
-        }
-        col[i * 3] = base[i * 3] * f;
-        col[i * 3 + 1] = base[i * 3 + 1] * f;
-        col[i * 3 + 2] = base[i * 3 + 2] * f;
-      }
-      crowd.instanceColor.needsUpdate = true;
-    }
+  // عامل الظل عند نقطة على أرض المطاف، تقرؤه الحشود (03-crowds.js) لتعتيم الحاجّ الواقف في الظل.
+  // في الظل الكامل يغيب ضوء الشمس (نحو 60% من إضاءة الحاجّ هنا) ويبقى ضوء السماء
+  atm.shadeAt = (x, z) => {
+    if (!shade) return 1;
+    const u = Math.floor(((x + GROUND_R) / (2 * GROUND_R)) * SHADE_RES);
+    const v = Math.floor(((z + GROUND_R) / (2 * GROUND_R)) * SHADE_RES);
+    if (u < 0 || v < 0 || u >= SHADE_RES || v >= SHADE_RES) return 1;
+    return Math.max(0.35, 1 - 0.6 * (shade[v * SHADE_RES + u] / shadeFull));
   };
+  world.crowds.shadeAt = atm.shadeAt;
 
   // ثريات الأروقة في الليل: كرات مضيئة (مادة لا تتأثر بالضوء)
   const lamps = new kn(new SphereGeometry(0.2, 8, 6), new MeshBasicMaterial({ color: "#ffe6ad" }), 120);
@@ -377,7 +343,6 @@ function createAtmosphere({ scene, renderer, world }) {
       for (let i = 0; i < shade.length; i++) shade[i] = px[i * 4 + 3] / 255;
       shadeFull = T.shadow;
     } else shade = null;
-    shadeTimer = 0;
     shadowTex.dispose(); // الحجم قد يتغير مع مستوى الجودة
     shadowTex.needsUpdate = true;
     if (T.night) {
@@ -413,7 +378,8 @@ function createAtmosphere({ scene, renderer, world }) {
       mat.emissive.set(T.night ? color : "#000000");
       mat.emissiveIntensity = T.night ? k : 1;
     }
-    blobMat.opacity = T.night ? 0.6 : 1;
+    // البطاقات البعيدة بلا إضاءة حقيقية: سطوعها بحسب الوقت. وبقع الظل أخف ليلًا
+    world.crowds.setLight({ impostor: T.night ? 0.62 : 0.95, blob: T.night ? 0.6 : 1 });
     regenerateEnvironment();
     bake();
     try {
@@ -425,14 +391,6 @@ function createAtmosphere({ scene, renderer, world }) {
     if (res === atm.res) return;
     atm.res = res;
     bake();
-  };
-  atm.update = (dt = 0) => {
-    for (const { b, crowd } of blobs) {
-      b.count = crowd.count;
-      b.visible = crowd.visible;
-    }
-    shadeTimer -= dt;
-    if (shadeTimer <= 0) (shadeTimer = 0.1), shadeCrowds();
   };
   atm.shadowCanvas = shadowCanvas;
   atm.lamps = lamps;

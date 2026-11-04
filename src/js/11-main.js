@@ -270,7 +270,6 @@ function step(dt) {
   game.update(dt);
   const pos = player.getPos();
   world.update(dt, pos);
-  atmosphere.update(dt);
   hud.update(dt);
   panels.update(dt, { time: hud.time, pos, heading: player.headingPhi() });
   modes.afterFrame(dt);

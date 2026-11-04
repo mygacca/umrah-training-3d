@@ -16,4 +16,6 @@ var Vector2 = gt,
   ShaderMaterial = rn,
   CanvasTexture = Ui,
   SRGBColorSpace = We,
-  BackSide = Oe;
+  BackSide = Oe,
+  InstancedMesh = kn,
+  InstancedBufferAttribute = vs;
