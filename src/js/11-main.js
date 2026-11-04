@@ -21,6 +21,7 @@ renderer.xr.setReferenceSpaceType("local-floor");
 var scene = new Di();
 var camera = new PerspectiveCamera(68, innerWidth / innerHeight, 0.05, 2200);
 var world = Ed(scene, renderer);
+addLandmarkDetail(scene, world); // الطبقة 4: تفاصيل المعالم
 var hud = createHud({ camera });
 var panels = createPanels({ scene, camera, model: hud.model });
 hud.onChange = () => panels.markDirty();

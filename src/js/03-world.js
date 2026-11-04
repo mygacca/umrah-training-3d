@@ -68,6 +68,7 @@ function Ed(i, t) {
     f = Se("#9aa2a8", { metalness: 0.35, roughness: 0.55 }),
     g = new Pt(new Oi(800, 64), Se("#cfc5b0", { roughness: 0.96 }));
   (g.rotation.x = -Math.PI / 2), i.add(g);
+  e.mats = { column: h, wall: d, gold: u, dome: f }; // لتفاصيل المعالم في 03-landmarks.js
   let v = new Pt(new Oi(pe.outer + 0.5, 128), c);
   (v.rotation.x = -Math.PI / 2), (v.position.y = 0.01), i.add(v);
   let m = new Pt(
@@ -78,7 +79,7 @@ function Ed(i, t) {
   let p = new nn();
   (p.rotation.y = Yt.rot), i.add(p);
   let b = new Pt(new Me(Yt.lx + 0.6, 0.32, Yt.lz + 0.6), Se("#f4f3ef", { roughness: 0.35 }));
-  (b.position.y = 0.16), p.add(b);
+  (b.position.y = 0.16), p.add(b), (e.kaabaGroup = p), (e.shadharwan = b);
   let C = Mn(ud(), { repeat: [3, 3], aniso: n }),
     y = Se("#ffffff", { map: C, roughness: 0.74, metalness: 0.06 }),
     E = Se("#6c6c6a", { roughness: 0.9 }),
@@ -93,7 +94,7 @@ function Ed(i, t) {
     new Ve(2.7, 4.7),
     Se("#ffffff", { map: Mn(fd(), { wrap: !1, aniso: n }), metalness: 0.45, roughness: 0.45 }),
   );
-  (I.rotation.y = Math.PI / 2), I.position.set(Yt.lx / 2 + 0.04, 4.15, Yt.lz / 2 - 2.95), p.add(I);
+  (I.rotation.y = Math.PI / 2), I.position.set(Yt.lx / 2 + 0.04, 4.15, Yt.lz / 2 - 2.95), p.add(I), (e.door = I);
   let A = new nn(),
     L = new Pt(
       new ni(0.26, 0.08, 12, 32),
@@ -125,7 +126,7 @@ function Ed(i, t) {
     let Tt = new Sr(N, { depth: it, bevelEnabled: !1, curveSegments: 1 });
     Tt.rotateX(-Math.PI / 2), Tt.translate(0, 0, -Yt.lz / 2);
     let R = new Pt(Tt, Se("#f6f5f0", { roughness: 0.4 }));
-    p.add(R);
+    p.add(R), (e.hijrWall = R);
     let _ = [];
     for (let k = 0; k <= St; k++) {
       let Y = ct + ((Math.PI - 2 * ct) * k) / St;
@@ -204,7 +205,7 @@ function Ed(i, t) {
     let it = new Pt(new Re(pe.arcOut, pe.arcOut, 9, 240, 1, !0), ct);
     it.position.y = 4.5;
     let N = new Pt(new ws(pe.arcIn - 0.3, pe.arcOut + 0.3, 120, 1), Se("#e7e0d0", { side: qe }));
-    (N.rotation.x = -Math.PI / 2), (N.position.y = 9), i.add(_t, it, N);
+    (N.rotation.x = -Math.PI / 2), (N.position.y = 9), i.add(_t, it, N), (e.arcadeWalls = [_t, it]);
     let St = new Re(0.34, 0.42, 6.3, 10);
     St.translate(0, 3.15, 0);
     let Tt = new kn(St, h, 120),
@@ -226,7 +227,7 @@ function Ed(i, t) {
         Y.makeTranslation(Math.sin(K) * nt, 11.4, Math.cos(K) * nt),
         k.setMatrixAt(lt, Y);
     }
-    i.add(Tt, _, k);
+    i.add(Tt, _, k), (e.columns = Tt), (e.domes = _), (e.finials = k);
   }
   {
     let q = (pe.gap[1] * Math.PI) / 180,
@@ -236,7 +237,7 @@ function Ed(i, t) {
         new Re(pe.outer, pe.outer, 34, 180, 1, !0, q, J),
         Se("#ffffff", { map: ct, side: qe, roughness: 0.85 }),
       );
-    (_t.position.y = 17), i.add(_t);
+    (_t.position.y = 17), i.add(_t), (e.outerWall = _t);
     for (let _ of pe.gap) {
       let z = (_ * Math.PI) / 180,
         k = new Pt(new Me(2.4, 34, 2.4), d);
@@ -316,7 +317,7 @@ function Ed(i, t) {
     let Y = [];
     for (let Ut = dt.zS + 2; Ut > dt.zM - 3; Ut -= 6)
       (Ut < dt.pass.z0 - 1 || Ut > dt.pass.z1 + 1) && Y.push(Ut);
-    let lt = new kn(k, h, Y.length),
+    let lt = (e.masaColumns = new kn(k, h, Y.length)),
       pt = new ue();
     Y.forEach((Ut, O) => {
       pt.makeTranslation(dt.x0, 0, Ut), lt.setMatrixAt(O, pt);

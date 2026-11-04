@@ -374,6 +374,7 @@ function createAtmosphere({ scene, renderer, world }) {
     for (const [mat, color, k] of [
       [world.minaretMat, "#ffd8a0", 0.32],
       [world.arcadeMat, "#ffcf8c", 0.22],
+      ...(world.glowMats || []), // تفاصيل المعالم (03-landmarks.js): الأقواس، والقناديل، والدرابزين
     ]) {
       mat.emissive.set(T.night ? color : "#000000");
       mat.emissiveIntensity = T.night ? k : 1;
