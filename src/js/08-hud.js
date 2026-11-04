@@ -23,6 +23,7 @@ function createHud({ camera }) {
     text: "",
     say: "",
     cardBtn: null,
+    gameBtn: null,
     action: { label: "", enabled: false },
     counter: { mode: null, done: 0, progress: 0, invalid: false, target: "marwa" },
     toast: { msg: "", kind: "info", until: 0 },
@@ -46,20 +47,31 @@ function createHud({ camera }) {
     });
     changed();
   };
+  // زر البطاقة: زر المنسك إن وُجد (انتقل إلى الصفا)، وإلا فزر «تعلّم سريع» (hud.extraBtn من 09-fast.js)
+  const showCardBtn = () => {
+    const btn = s.gameBtn || (hud.extraBtn ? hud.extraBtn() : null);
+    s.cardBtn = btn;
+    dom.cardBtn.hidden = !btn;
+    if (btn) dom.cardBtn.textContent = btn;
+  };
   hud.setCard = ({ title = "", text = "", say = "", btn = null }) => {
     const newTitle = title !== s.title;
     s.title = title;
     s.text = text;
     s.say = say;
-    s.cardBtn = btn;
+    s.gameBtn = btn;
+    showCardBtn();
     dom.cardTitle.textContent = title;
     dom.cardText.textContent = text;
     dom.cardSay.textContent = say;
     dom.cardSay.hidden = !say;
-    dom.cardBtn.hidden = !btn;
-    if (btn) dom.cardBtn.textContent = btn;
     if (newTitle && hud.onNewCard) hud.onNewCard();
     changed();
+  };
+  hud.refreshCardBtn = () => {
+    const old = s.cardBtn;
+    showCardBtn();
+    if (old !== s.cardBtn) changed();
   };
   hud.setAction = (label, enabled) => {
     if (s.action.label === label && s.action.enabled === enabled) return;

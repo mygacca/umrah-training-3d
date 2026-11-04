@@ -345,7 +345,9 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       <label class="sw"><input type="checkbox" data-opt="voice" checked><span class="track"></span><span>الإرشاد الصوتي</span></label>
       <label class="sw"><input type="checkbox" data-opt="labels" checked><span class="track"></span><span>أسماء المعالم</span></label>
       <label class="sw"><input type="checkbox" data-opt="comfort"><span class="track"></span><span>حركة مريحة</span></label>
+      <label class="sw"><input type="checkbox" data-opt="fast"><span class="track"></span><span>تعلّم سريع</span></label>
     </div>
+    <p class="fine">تعلّم سريع: زر في البطاقة يمشي عنك الأشواط والمسافات الطويلة، وتبقى أزرار المناسك عليك.</p>
     <p class="note voice-missing" hidden>لا يوجد صوت عربي على هذا الجهاز، فالإرشاد مكتوب فقط.</p>
     <p id="vrNote" class="fine">وضع النظارة يعمل حين تُفتح الصفحة من متصفح النظارة عبر رابط https.</p>
     <p class="fine">نموذج أولي: المسافات مصغّرة، والنصوص الشرعية مختصرة للعرض وتحتاج مراجعة مختص قبل النشر.</p>
@@ -395,6 +397,7 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       <label class="sw"><input type="checkbox" data-opt="labels" checked><span class="track"></span><span>أسماء المعالم</span></label>
       <label class="sw"><input type="checkbox" data-opt="crowd" checked><span class="track"></span><span>الحشود</span></label>
       <label class="sw"><input type="checkbox" data-opt="comfort"><span class="track"></span><span>حركة مريحة</span></label>
+      <label class="sw"><input type="checkbox" data-opt="fast"><span class="track"></span><span>تعلّم سريع</span></label>
       <label class="sw mobile-only"><input type="checkbox" data-opt="guide" checked><span class="track"></span><span>المشي الموجّه</span></label>
       <label class="sw mobile-only"><input type="checkbox" data-opt="gyro"><span class="track"></span><span>النظر بتحريك الجوال</span></label>
     </div>
@@ -448,6 +451,7 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       <div><dt>القائمة</dt><dd><bdi>Esc</bdi></dd></div>
     </dl>
     <dl class="keys">
+      <div><dt>تعلّم سريع</dt><dd>زر في البطاقة: «امشِ إلى خط البداية»، و«أكمل الشوط» في الطواف والسعي، و«امشِ إلى خلف المقام». يمشي عنك ويُحتسب الشوط، ويبقى عليك التكبير والدعاء والصلاة. وللرَّمَل والإسراع بين العلمين فعّل الهرولة قبل الزر</dd></div>
       <div><dt>علبة VR</dt><dd>النظر إلى زر ثانية واحدة يختاره، ولمس الشاشة (زر العلبة) يختار أو يبدأ المشي ويوقفه. يد التحكم: العصا اليسرى للمشي، واليمنى أو الكتفان للدوران، وA للاختيار، وB للمشي</dd></div>
       <div><dt>في النظارة</dt><dd>العصا اليسرى للمشي، واليمنى للدوران على دفعات، والزناد الأيمن للاختيار، والأيسر للهرولة</dd></div>
     </dl>
@@ -7314,6 +7318,12 @@ function jc(i) {
         "راجعي التنبيهات أعلاه، وأعيدي التدريب قبل عمرتك الحقيقية.",
       ),
     },
+    // «تعلّم سريع» (09-fast.js): زر في البطاقة يمشي المقطع الطويل. وأزرار المناسك نفسها تبقى
+    fast: {
+      toStart: t("امشِ إلى خط البداية", "امشي إلى خط البداية"),
+      lap: t("أكمل الشوط", "أكملي الشوط"),
+      toMaqam: t("امشِ إلى خلف المقام", "امشي إلى خلف المقام"),
+    },
   };
 }
 // مصادر الإدخال. لا يعرف أيٌّ منها شيئًا عن اللعبة؛ كل وضع في 10-modes.js يقرأ منها ما يلزمه في كل إطار.
@@ -8892,6 +8902,7 @@ function createHud({ camera }) {
     text: "",
     say: "",
     cardBtn: null,
+    gameBtn: null,
     action: { label: "", enabled: false },
     counter: { mode: null, done: 0, progress: 0, invalid: false, target: "marwa" },
     toast: { msg: "", kind: "info", until: 0 },
@@ -8915,20 +8926,31 @@ function createHud({ camera }) {
     });
     changed();
   };
+  // زر البطاقة: زر المنسك إن وُجد (انتقل إلى الصفا)، وإلا فزر «تعلّم سريع» (hud.extraBtn من 09-fast.js)
+  const showCardBtn = () => {
+    const btn = s.gameBtn || (hud.extraBtn ? hud.extraBtn() : null);
+    s.cardBtn = btn;
+    dom.cardBtn.hidden = !btn;
+    if (btn) dom.cardBtn.textContent = btn;
+  };
   hud.setCard = ({ title = "", text = "", say = "", btn = null }) => {
     const newTitle = title !== s.title;
     s.title = title;
     s.text = text;
     s.say = say;
-    s.cardBtn = btn;
+    s.gameBtn = btn;
+    showCardBtn();
     dom.cardTitle.textContent = title;
     dom.cardText.textContent = text;
     dom.cardSay.textContent = say;
     dom.cardSay.hidden = !say;
-    dom.cardBtn.hidden = !btn;
-    if (btn) dom.cardBtn.textContent = btn;
     if (newTitle && hud.onNewCard) hud.onNewCard();
     changed();
+  };
+  hud.refreshCardBtn = () => {
+    const old = s.cardBtn;
+    showCardBtn();
+    if (old !== s.cardBtn) changed();
   };
   hud.setAction = (label, enabled) => {
     if (s.action.label === label && s.action.enabled === enabled) return;
@@ -9009,6 +9031,75 @@ function createHud({ camera }) {
     fade.visible = m.opacity > 0.01;
   };
   return hud;
+}
+// «تعلّم سريع»: زر في البطاقة يمشي عن اللاعب المقاطع الطويلة، ولا يختصر خطوة من المناسك:
+//   إلى بداية الطواف، وإلى خلف المقام: يمشي حتى يضيء الزر الذهبي، ثم ينظر إلى الحجر الأسود أو الكعبة
+//   الطواف «أكمل الشوط»: يمشي بقية الشوط والكعبة عن اليسار، حول الحِجر، حتى خط الحجر الأسود. والتكبير بعده على اللاعب
+//   السعي «أكمل الشوط»: يمشي إلى الصفا أو المروة. والدعاء عند الطرف على اللاعب
+// المشي بمنطق المناسك نفسه: game.update خطوة خطوة، خلف تعتيم قصير كالانتقال إلى الصفا.
+// والهرولة كما ضبطها اللاعب قبل الزر، فيُحسب الرَّمَل والإسراع بين العلمين كما لو مشى. ومدة التدريب بالوقت الحقيقي.
+var FAST_STEP = 0.5; // متر لكل خطوة من المشي المسرَّع
+var FAST_FADE_MS = 380;
+
+function createFastLearning({ game, hud, player, world }) {
+  const f = { enabled: false, busy: false };
+  const guide = createRouteGuide({ game, hud, laneAt: world.crowds.laneAt });
+
+  // عنوان الزر في البطاقة، أو null حيث لا مقطع طويل (أو وصل اللاعب)
+  f.label = () => {
+    if (!f.enabled || f.busy) return null;
+    const L = jc(game.gender).fast;
+    const p = player.getPos();
+    if (game.stage === "toStart") return Zc(p.x, p.z) ? null : L.toStart;
+    if (game.stage === "toMaqam") return $c(p.x, p.z) ? null : L.toMaqam;
+    if (game.stage === "tawaf" || game.stage === "sai") return L.lap;
+    return null;
+  };
+
+  function walk(stage) {
+    if (game.stage !== stage) return;
+    const clock = game.clock;
+    const start = game.debug();
+    let p = player.getPos();
+    guide.sense = 1; // الكعبة عن اليسار
+    guide.rHold = Math.hypot(p.x, p.z); // على البعد نفسه من الكعبة
+    const done = () => {
+      if (game.stage !== stage) return true; // الشوط السابع ينقل إلى المنسك التالي
+      if (stage === "tawaf") return game.debug().T.laps > start.T.laps;
+      if (stage === "sai") return game.debug().A.lap > start.A.lap;
+      return hud.model.action.enabled;
+    };
+    for (let i = 0; i < 4000 && !done(); i++) {
+      p = player.getPos();
+      const d = guide.direction(p.x, p.z, 0, 0, false, 0);
+      if (!d) break;
+      const [nx, nz] = xd(p.x, p.z, p.x + d[0] * FAST_STEP, p.z + d[1] * FAST_STEP);
+      if (Math.hypot(nx - p.x, nz - p.z) < 0.05) break; // علق
+      player.teleport(nx, nz, d[0], d[1]);
+      player.moving = true;
+      game.update(FAST_STEP / (player.isJogging() ? 3.9 : 2.4));
+    }
+    player.moving = false;
+    game.clock = clock;
+    // بعد الوصول: إلى الحجر الأسود عند البداية، وإلى الكعبة خلف المقام وعلى الصفا والمروة
+    const look = stage === "toStart" ? Ln.black : stage === "toMaqam" || stage === "sai" ? [0, 0] : null;
+    if (look) (p = player.getPos()), player.teleport(p.x, p.z, look[0] - p.x, look[1] - p.z);
+  }
+
+  f.run = () => {
+    const stage = game.stage;
+    if (!f.label()) return;
+    f.busy = true;
+    hud.refreshCardBtn();
+    hud.fadeTo(1);
+    setTimeout(() => {
+      walk(stage);
+      hud.fadeTo(0);
+      f.busy = false;
+      hud.refreshCardBtn();
+    }, FAST_FADE_MS);
+  };
+  return f;
 }
 function Pd({ world: i, hud: t, player: e }) {
   let n = { gender: "m", stage: "intro", sub: "", t0: 0, clock: 0 },
@@ -9886,7 +9977,10 @@ atmosphere.setTime(
   })(),
 );
 
-hud.onCardBtn = () => (game.stage === "done" ? restart() : game.fastToSafa());
+// زر البطاقة: زر المنسك (انتقل إلى الصفا) إن وُجد، وإلا فزر «تعلّم سريع»
+var fast = createFastLearning({ game, hud, player, world });
+hud.extraBtn = fast.label;
+hud.onCardBtn = () => (game.stage === "done" ? restart() : hud.model.gameBtn ? game.fastToSafa() : fast.run());
 Promise.race([
   Promise.all([
     document.fonts.load('600 40px "Noto Kufi Arabic"'),
@@ -9921,13 +10015,13 @@ var chosenMode = (() => {
 })();
 function chooseMode(mode) {
   chosenMode = mode;
-  document.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-checked", b.dataset.mode === mode ? "true" : "false"));
+  document.querySelectorAll("button[data-mode]").forEach((b) => b.setAttribute("aria-checked", b.dataset.mode === mode ? "true" : "false"));
   document.querySelectorAll(".mode-note").forEach((n) => (n.hidden = n.dataset.for !== mode));
   try {
     localStorage.setItem("umrah.mode", mode);
   } catch {}
 }
-document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => chooseMode(b.dataset.mode)));
+document.querySelectorAll("button[data-mode]").forEach((b) => b.addEventListener("click", () => chooseMode(b.dataset.mode)));
 chooseMode(chosenMode);
 modes.xrSupported().then((ok) => {
   document.querySelectorAll('[data-mode="xr"], #menuVr').forEach((b) => (b.hidden = !ok));
@@ -9970,6 +10064,10 @@ syncOpt("gyro", modes.gyro);
 syncOpt("guide", modes.guide);
 bindOpt("gyro", (on) => (modes.setGyro(on), saveFlag("umrah.gyro", on)));
 bindOpt("guide", (on) => (modes.setGuide(on), saveFlag("umrah.guide", on)));
+// «تعلّم سريع» (09-fast.js): زر في البطاقة يمشي الأشواط والمسافات الطويلة
+fast.enabled = savedFlag("umrah.fast", false);
+syncOpt("fast", fast.enabled);
+bindOpt("fast", (on) => ((fast.enabled = on), saveFlag("umrah.fast", on), hud.refreshCardBtn()));
 var refreshVoice = () => {
   const ok = hud.voiceAvailable();
   document.querySelectorAll('input[data-opt="voice"]').forEach((e) => {
@@ -10004,7 +10102,10 @@ function beginTraining() {
   const hint = startHints[modes.mode];
   if (fromIntro && hint) setTimeout(() => hud.toast(hint, "info", 5), 900);
 }
+// بعد إغلاق نافذة بالنقر يبقى التركيز على زرها المخفي لحظة، فتضيع أول ضغطة مسافة (المسافة على زر تخصّه)
+var dropFocus = () => document.activeElement && document.activeElement !== document.body && document.activeElement.blur?.();
 function restart() {
+  dropFocus();
   $id("summary").hidden = true;
   $id("menu").hidden = true;
   player.enabled = true;
@@ -10060,6 +10161,7 @@ $id("menuBtn").addEventListener("click", () => {
   player.enabled = false;
 });
 $id("menuClose").addEventListener("click", () => {
+  dropFocus();
   $id("menu").hidden = true;
   player.enabled = true;
 });
@@ -10091,7 +10193,7 @@ game.onFinish = (r) => {
   hud.setAction("أعِد التدريب", true);
 };
 $id("againBtn").addEventListener("click", restart);
-$id("freeBtn").addEventListener("click", () => ($id("summary").hidden = true));
+$id("freeBtn").addEventListener("click", () => (dropFocus(), ($id("summary").hidden = true)));
 addEventListener("resize", () => modes.resize());
 
 // ——— حلقة الإطار ———
@@ -10127,7 +10229,7 @@ renderer.setAnimationLoop(() => {
   step(Math.min(realDt, 0.05));
   modes.render();
 });
-window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, step };
+window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, fast, step };
 })();
 
 </script>
