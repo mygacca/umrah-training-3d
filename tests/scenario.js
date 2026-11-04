@@ -224,11 +224,14 @@ function runUmrah(mode) {
         // الجودة المتوسطة من القائمة ترسم 80% من الحشود، ثم «تلقائية» تعيد العالية
         await page.keyboard.press('Escape');
         await page.click('[data-quality="medium"]');
-        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.world.crowds.active.mataf]), ['medium', 304]);
+        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.world.crowds.active.mataf, window.__umrah.materials.kiswaRes]), ['medium', 304, 1024]);
         await page.click('[data-quality="auto"]');
         await page.click('[data-time="asr"]');
         await page.click('#menuClose');
-        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.atmosphere.time, window.__umrah.atmosphere.lamps.visible, window.__umrah.world.lanternMat.emissive.getHex()]), ['high', 'asr', false, 0]);
+        assert.deepEqual(
+          await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.atmosphere.time, window.__umrah.atmosphere.lamps.visible, window.__umrah.world.lanternMat.emissive.getHex(), window.__umrah.materials.kiswaRes]),
+          ['high', 'asr', false, 0, 2048],
+        );
         // نسبة البكسل تنخفض عن سقف المستوى حين تبقى الإطارات بطيئة ثانيتين (الرسم البرمجي هنا بطيء دائمًا)
         await page.waitForTimeout(5000);
         const { fps, pixelRatio, cap } = await page.evaluate(() => ({
@@ -313,6 +316,27 @@ function runUmrah(mode) {
         assert.ok(r.doorX > 6.1, 'الباب ليس بارزًا عن الجدار');
         assert.ok(r.masaColumns[0] >= 30 && r.masaColumns[1], 'صفّا أعمدة المسعى');
         assert.ok(r.parts >= 8, `أجزاء المعالم ${r.parts}`);
+      });
+
+    // الطبقة 5 من docs/realism-plan.md: خرائط الخشونة والمعدنية، ودقة الكسوة بحسب المستوى
+    if (mode === 'desktop' || mode === 'mobile')
+      test('الأنسجة والمواد: رخام مصقول، وكسوة بلمعان النقش، وذهب معدني', async () => {
+        const r = await page.evaluate(() => {
+          const { world: w, materials: m } = window.__umrah;
+          const floor = w.mats.floor;
+          return {
+            floor: [!!floor.roughnessMap, !!floor.bumpMap, floor.roughness],
+            arcadeFloor: !!m.arcadeFloor && m.arcadeFloor.material.map !== floor.map,
+            kiswa: [m.kiswaRes, w.kiswaMat.roughnessMap.image.width],
+            gold: [w.bandMat, w.door.material].map((x) => !!x.metalnessMap && x.metalnessMap === x.roughnessMap),
+          };
+        });
+        assert.deepEqual(r.floor, [true, true, 1], 'رخام المطاف بلا خشونة أو تفاصيل');
+        assert.ok(r.arcadeFloor, 'رخام الأروقة نفس رخام المطاف');
+        // المستوى العالي (الحاسوب) 2048، والمنخفض (الجوال) 1024
+        const res = mode === 'desktop' ? 2048 : 1024;
+        assert.deepEqual(r.kiswa, [res, res], 'دقة نسيج الكسوة');
+        assert.deepEqual(r.gold, [true, true], 'حزام الكسوة والباب بلا خريطة معدنية');
       });
 
     test('الطواف: سبعة أشواط من الحجر الأسود، والحِجر يُلغي الشوط، والعكس يُكتشف', async () => {
