@@ -201,9 +201,10 @@ function runUmrah(mode) {
         });
       // الحدود: قياس هذه النسخة وفوقه هامش نحو 20%. إن تجاوزتها إضافة، فراجع docs/realism-plan.md قبل رفعها
       // (في هذه الحالة: اللافتات ظاهرة، وكل لافتة أمر رسم، وحلقة الهدف وخط البداية ظاهران)
-      // قيست بعد الطبقة 2 (الهيئات القريبة والبطاقات البعيدة): الحاسوب 78 أمرًا و72 ألف مثلث (المستوى العالي)،
-      // والجوال 49 و40 ألفًا (المنخفض: 55% من الحشود)، وعلبة VR 71 و46 ألفًا لعين واحدة (نافذتها أفقية عريضة فترى أكثر)
-      const BUDGET = { desktop: { calls: 90, triangles: 87000 }, mobile: { calls: 57, triangles: 48000 }, cardboard: { calls: 83, triangles: 56000 } }[mode];
+      // قيست بعد الطبقة 4 (تفاصيل المعالم: أقواس ثلاثية الأبعاد، وتيجان الأعمدة، والقناديل...):
+      // الحاسوب 82 أمرًا و99 ألف مثلث (المستوى العالي)، والجوال 54 و67 ألفًا (المنخفض)، وعلبة VR 77 و74 ألفًا لعين واحدة.
+      // الطبقة 4 زادت نحو 27 ألف مثلث، وهو دون تقدير الخطة (+60–150 ألفًا) ودون حدود الأجهزة فيها (300–500 ألف للجوال)
+      const BUDGET = { desktop: { calls: 98, triangles: 119000 }, mobile: { calls: 65, triangles: 81000 }, cardboard: { calls: 92, triangles: 88000 } }[mode];
       const day = await measure();
       if (process.env.UMRAH_DEBUG) console.error('budget', mode, JSON.stringify(day));
       assert.ok(day.calls <= BUDGET.calls, `أوامر الرسم ${day.calls} > ${BUDGET.calls}`);
@@ -216,6 +217,8 @@ function runUmrah(mode) {
         await page.click('#menuClose');
         assert.equal(await page.evaluate(() => window.__umrah.atmosphere.time), 'night');
         assert.equal(await page.evaluate(() => window.__umrah.atmosphere.lamps.visible), true);
+        // قناديل الحِجر والأقواس تتوهّج ليلًا (الطبقة 4)
+        assert.ok(await page.evaluate(() => window.__umrah.world.lanternMat.emissive.getHex() !== 0 && window.__umrah.world.archMat.emissive.getHex() !== 0), 'لا توهّج ليلًا');
         const night = await measure();
         assert.ok(night.calls <= BUDGET.calls && night.triangles <= BUDGET.triangles, `ميزانية الليل ${JSON.stringify(night)}`);
         // الجودة المتوسطة من القائمة ترسم 80% من الحشود، ثم «تلقائية» تعيد العالية
@@ -225,7 +228,7 @@ function runUmrah(mode) {
         await page.click('[data-quality="auto"]');
         await page.click('[data-time="asr"]');
         await page.click('#menuClose');
-        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.atmosphere.time, window.__umrah.atmosphere.lamps.visible]), ['high', 'asr', false]);
+        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.atmosphere.time, window.__umrah.atmosphere.lamps.visible, window.__umrah.world.lanternMat.emissive.getHex()]), ['high', 'asr', false, 0]);
         // نسبة البكسل تنخفض عن سقف المستوى حين تبقى الإطارات بطيئة ثانيتين (الرسم البرمجي هنا بطيء دائمًا)
         await page.waitForTimeout(5000);
         const { fps, pixelRatio, cap } = await page.evaluate(() => ({
@@ -285,6 +288,31 @@ function runUmrah(mode) {
         for (const [raise, slow] of r.atLine) assert.ok(raise > 0.3 && slow < 0.85, `عند الخط: رفع ${raise.toFixed(2)} وسرعة ${slow.toFixed(2)}`);
         assert.ok(r.greenMen.length > 0 && r.greenMen.every((v) => Math.abs(v - 1.6) < 1e-6), 'الرجال لا يُسرعون بين العلمين');
         assert.ok(r.greenWomen.every((v) => v === 1), 'النساء يُسرعن بين العلمين');
+      });
+
+    // الطبقة 4 من docs/realism-plan.md: تفاصيل المعالم تُبنى، وما تستبدله من المشهد القديم مخفي
+    if (mode === 'desktop')
+      test('تفاصيل المعالم: الأقواس والأعمدة والكعبة والحِجر والمسعى', async () => {
+        const r = await page.evaluate(() => {
+          const w = window.__umrah.world;
+          const arches = w.landmarkDetail.filter((o) => o.isInstancedMesh && o.material === w.archMat);
+          return {
+            arches: arches.map((a) => a.count),
+            oldArcadeHidden: w.arcadeWalls.every((a) => !a.visible),
+            columnVerts: w.columns.geometry.attributes.position.count,
+            shadharwanHidden: !w.shadharwan.visible,
+            doorX: w.door.position.x,
+            masaColumns: [w.masaColumns.count, w.masaColumns.visible],
+            parts: w.landmarkDetail.length,
+          };
+        });
+        assert.deepEqual(r.arches, [60, 60], 'أقواس الرواقين');
+        assert.ok(r.oldArcadeHidden, 'نسيج الأقواس القديم ما زال ظاهرًا');
+        assert.ok(r.columnVerts > 120, 'الأعمدة بلا قاعدة وتاج');
+        assert.ok(r.shadharwanHidden, 'الشاذروان القديم ما زال ظاهرًا');
+        assert.ok(r.doorX > 6.1, 'الباب ليس بارزًا عن الجدار');
+        assert.ok(r.masaColumns[0] >= 30 && r.masaColumns[1], 'صفّا أعمدة المسعى');
+        assert.ok(r.parts >= 8, `أجزاء المعالم ${r.parts}`);
       });
 
     test('الطواف: سبعة أشواط من الحجر الأسود، والحِجر يُلغي الشوط، والعكس يُكتشف', async () => {
