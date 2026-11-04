@@ -68,9 +68,9 @@ function Ed(i, t) {
     f = Se("#9aa2a8", { metalness: 0.35, roughness: 0.55 }),
     g = new Pt(new Oi(800, 64), Se("#cfc5b0", { roughness: 0.96 }));
   (g.rotation.x = -Math.PI / 2), i.add(g);
-  e.mats = { column: h, wall: d, gold: u, dome: f }; // لتفاصيل المعالم في 03-landmarks.js
+  e.mats = { column: h, wall: d, gold: u, dome: f, floor: c }; // لتفاصيل المعالم والمواد (03-landmarks.js و01-materials.js)
   let v = new Pt(new Oi(pe.outer + 0.5, 128), c);
-  (v.rotation.x = -Math.PI / 2), (v.position.y = 0.01), i.add(v);
+  (v.rotation.x = -Math.PI / 2), (v.position.y = 0.01), i.add(v), (e.matafFloor = v);
   let m = new Pt(
     new Ve(Yt.lx + 8, Yt.lz + 8),
     new Le({ map: Mn(md(), { wrap: !1 }), transparent: !0, depthWrite: !1 }),
@@ -81,12 +81,12 @@ function Ed(i, t) {
   let b = new Pt(new Me(Yt.lx + 0.6, 0.32, Yt.lz + 0.6), Se("#f4f3ef", { roughness: 0.35 }));
   (b.position.y = 0.16), p.add(b), (e.kaabaGroup = p), (e.shadharwan = b);
   let C = Mn(ud(), { repeat: [3, 3], aniso: n }),
-    y = Se("#ffffff", { map: C, roughness: 0.74, metalness: 0.06 }),
+    y = (e.kiswaMat = Se("#ffffff", { map: C, roughness: 0.74, metalness: 0.06 })),
     E = Se("#6c6c6a", { roughness: 0.9 }),
     w = new Pt(new Me(Yt.lx, Yt.h, Yt.lz), [y, y, E, E, y, y]);
   (w.position.y = Yt.h / 2), p.add(w);
   let D = Mn(dd(), { repeat: [1.5, 1], aniso: n }),
-    x = Se("#ffffff", { map: D, metalness: 0.55, roughness: 0.4, envMapIntensity: 1.3 }),
+    x = (e.bandMat = Se("#ffffff", { map: D, metalness: 0.55, roughness: 0.4, envMapIntensity: 1.3 })),
     M = new Le({ visible: !1 }),
     P = new Pt(new Me(Yt.lx + 0.05, 0.98, Yt.lz + 0.05), [x, x, M, M, x, x]);
   (P.position.y = Yt.h * 0.68), p.add(P);
@@ -298,7 +298,7 @@ function Ed(i, t) {
       J = (dt.zS + 5 + dt.zM - 5) / 2,
       ct = dt.x1 - dt.x0,
       _t = Mn(Gc({ seed: 21 }), { repeat: [ct / 2.4, q / 2.4], aniso: n }),
-      it = new Pt(new Ve(ct, q), Se("#ffffff", { map: _t, roughness: 0.3 }));
+      it = new Pt(new Ve(ct, q), (e.masaFloorMat = Se("#ffffff", { map: _t, roughness: 0.3 })));
     (it.rotation.x = -Math.PI / 2), it.position.set(dt.xc, 0.015, J);
     let N = new Pt(new Ve(ct, q), Se("#f1ebdf", { roughness: 0.9 }));
     (N.rotation.x = Math.PI / 2), N.position.set(dt.xc, 11, J), i.add(it, N);

@@ -22,6 +22,7 @@ var scene = new Di();
 var camera = new PerspectiveCamera(68, innerWidth / innerHeight, 0.05, 2200);
 var world = Ed(scene, renderer);
 addLandmarkDetail(scene, world); // الطبقة 4: تفاصيل المعالم
+var materials = upgradeMaterials(scene, world); // الطبقة 5: الأنسجة والمواد
 var hud = createHud({ camera });
 var panels = createPanels({ scene, camera, model: hud.model });
 hud.onChange = () => panels.markDirty();
@@ -42,7 +43,10 @@ var modes = createModes({ renderer, scene, camera, player, hud, panels, game, in
 // ——— الجودة وأوقات المشهد (الطبقتان 0 و1 من docs/realism-plan.md) ———
 var quality = createQuality({ renderer, world });
 var atmosphere = createAtmosphere({ scene, renderer, world });
-quality.onTier = (tier) => atmosphere.setResolution(tier.shadowRes);
+quality.onTier = (tier) => {
+  atmosphere.setResolution(tier.shadowRes);
+  materials.setKiswaRes(tier.kiswaRes);
+};
 modes.onChange = (mode) => quality.apply(mode);
 function markChoice(attr, value) {
   document.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute("aria-pressed", b.getAttribute(attr) === value ? "true" : "false"));
@@ -285,4 +289,4 @@ renderer.setAnimationLoop(() => {
   step(Math.min(realDt, 0.05));
   modes.render();
 });
-window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, step };
+window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, step };

@@ -2,11 +2,11 @@
 // المستوى يُختار تلقائيًا بحسب الوضع، ويُغيَّر من القائمة. ونسبة البكسل تتكيّف مع سرعة الإطارات:
 // تنخفض إن بقيت الإطارات بطيئة ثانيتين، وترتفع ببطء إن عادت سريعة. وفي النظارة يزيد التنقيط المركزي بدلها.
 var QUALITY_TIERS = {
-  low: { name: "منخفضة", maxPixelRatio: 1, minPixelRatio: 0.6, crowd: 0.55, crowdNear: 16, shadowRes: 768 },
-  medium: { name: "متوسطة", maxPixelRatio: 1.3, minPixelRatio: 0.75, crowd: 0.8, crowdNear: 22, shadowRes: 1024 },
-  high: { name: "عالية", maxPixelRatio: 1.6, minPixelRatio: 0.9, crowd: 1, crowdNear: 28, shadowRes: 1024 },
+  low: { name: "منخفضة", maxPixelRatio: 1, minPixelRatio: 0.6, crowd: 0.55, crowdNear: 16, shadowRes: 768, kiswaRes: 1024 },
+  medium: { name: "متوسطة", maxPixelRatio: 1.3, minPixelRatio: 0.75, crowd: 0.8, crowdNear: 22, shadowRes: 1024, kiswaRes: 1024 },
+  high: { name: "عالية", maxPixelRatio: 1.6, minPixelRatio: 0.9, crowd: 1, crowdNear: 28, shadowRes: 1024, kiswaRes: 2048 },
   // النظارة ترسم عينين بدقة عالية: حشود أقل، ونسبة البكسل لا تُستعمل (دقة الإطار من النظارة)
-  xr: { name: "النظارة", framebufferScale: 1, foveation: 0.5, crowd: 0.7, crowdNear: 18, shadowRes: 1024 },
+  xr: { name: "النظارة", framebufferScale: 1, foveation: 0.5, crowd: 0.7, crowdNear: 18, shadowRes: 1024, kiswaRes: 1024 },
 };
 // دقة نسيج الظل: 1024 تعني نحو 11 سم لكل بكسل على المطاف، وتكفي لظل ناعم. 2048 أبطأ خبزًا بكثير وأربعة أضعاف الذاكرة
 var QUALITY_TARGET_FPS = { flat: 55, xr: 68 }; // أقل قليلًا من 60 و72 حتى لا يتذبذب التكيّف
@@ -44,7 +44,9 @@ function createQuality({ renderer, world }) {
     world.setCrowdFraction(T.crowd);
     world.crowds.setNear(T.crowdNear); // أبعد من هذا: بطاقة مسطحة بدل الهيئة الكاملة
     slow = fast = 0;
-    if (changed && q.onTier) q.onTier(T);
+    // أول تطبيق يُبلّغ أيضًا: الأنسجة (الظل، والكسوة) تُبنى بدقة المستوى من البداية
+    if ((changed || !q.applied) && q.onTier) q.onTier(T);
+    q.applied = true;
   };
   q.setChoice = (choice, mode) => {
     q.choice = choice;
