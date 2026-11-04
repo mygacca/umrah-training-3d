@@ -180,7 +180,7 @@ function runUmrah(mode) {
 
     // الطبقة 0 من docs/realism-plan.md: مستوى الجودة بحسب الوضع، وميزانية رسم من نقطة ثابتة أمام الكعبة
     test('الجودة وميزانية الرسم', async () => {
-      const q = await page.evaluate(() => ({ tier: window.__umrah.quality.tier, crowd: window.__umrah.world.crowds[0].count }));
+      const q = await page.evaluate(() => ({ tier: window.__umrah.quality.tier, crowd: window.__umrah.world.crowds.active.mataf }));
       const expected = { desktop: ['high', 380], mobile: ['low', 209], cardboard: ['low', 209], xr: ['xr', 266] }[mode];
       assert.deepEqual([q.tier, q.crowd], expected, 'مستوى الجودة التلقائي');
       if (mode === 'xr') {
@@ -201,9 +201,9 @@ function runUmrah(mode) {
         });
       // الحدود: قياس هذه النسخة وفوقه هامش نحو 20%. إن تجاوزتها إضافة، فراجع docs/realism-plan.md قبل رفعها
       // (في هذه الحالة: اللافتات ظاهرة، وكل لافتة أمر رسم، وحلقة الهدف وخط البداية ظاهران)
-      // قيست: الحاسوب 77 أمرًا و97 ألف مثلث (المستوى العالي)، والجوال 47 و56 ألفًا (المنخفض: 55% من الحشود)،
-      // وعلبة VR 69 و63 ألفًا لعين واحدة (نافذتها أفقية عريضة فترى أكثر)
-      const BUDGET = { desktop: { calls: 90, triangles: 115000 }, mobile: { calls: 57, triangles: 67000 }, cardboard: { calls: 83, triangles: 76000 } }[mode];
+      // قيست بعد الطبقة 2 (الهيئات القريبة والبطاقات البعيدة): الحاسوب 78 أمرًا و72 ألف مثلث (المستوى العالي)،
+      // والجوال 49 و40 ألفًا (المنخفض: 55% من الحشود)، وعلبة VR 71 و46 ألفًا لعين واحدة (نافذتها أفقية عريضة فترى أكثر)
+      const BUDGET = { desktop: { calls: 90, triangles: 87000 }, mobile: { calls: 57, triangles: 48000 }, cardboard: { calls: 83, triangles: 56000 } }[mode];
       const day = await measure();
       if (process.env.UMRAH_DEBUG) console.error('budget', mode, JSON.stringify(day));
       assert.ok(day.calls <= BUDGET.calls, `أوامر الرسم ${day.calls} > ${BUDGET.calls}`);
@@ -221,7 +221,7 @@ function runUmrah(mode) {
         // الجودة المتوسطة من القائمة ترسم 80% من الحشود، ثم «تلقائية» تعيد العالية
         await page.keyboard.press('Escape');
         await page.click('[data-quality="medium"]');
-        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.world.crowds[0].count]), ['medium', 304]);
+        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.world.crowds.active.mataf]), ['medium', 304]);
         await page.click('[data-quality="auto"]');
         await page.click('[data-time="asr"]');
         await page.click('#menuClose');
@@ -236,6 +236,56 @@ function runUmrah(mode) {
         if (fps < 45) assert.ok(pixelRatio < cap, `نسبة البكسل ${pixelRatio} لم تنخفض عن ${cap} مع ${fps.toFixed(1)} إطارًا/ث`);
       }
     });
+
+    // الطبقة 2 من docs/realism-plan.md. في وضع واحد يكفي: الحشود واحدة في الأوضاع كلها
+    if (mode === 'desktop')
+      test('الحشود الحيّة: الهيئات، والإشارة عند الحجر الأسود، والإسراع بين العلمين، والبطاقات البعيدة', async () => {
+        const bw = toWorld(...localAt(PSI_BLACK, 1));
+        const we = Math.atan2(-bw[1], bw[0]); // زاوية خط الحجر الأسود
+        const r = await page.evaluate((we) => {
+          const c = window.__umrah.world.crowds;
+          const P = window.__umrah.player.getPos();
+          const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+          // الاضطباع: كتف أيمن مكشوف (بلون البشرة، لا يُصبغ) في رجال المطاف وحدهم
+          const bareRightShoulder = (geo) => {
+            const p = geo.attributes.position;
+            const t = geo.attributes.aTint;
+            let n = 0;
+            for (let i = 0; i < p.count; i++) if (t.getX(i) === 0 && p.getX(i) > 0.12 && p.getY(i) > 1.3 && p.getY(i) < 1.5) n++;
+            return n;
+          };
+          const [mataf, masa] = [c.meshes.find((m) => m.area === 'mataf' && m.kind === 0), c.meshes.find((m) => m.area === 'masa' && m.kind === 0)];
+          // أقرب حاجّ مرسوم إلى اللاعب
+          let nearest = 1e9;
+          for (const M of c.meshes)
+            for (let i = 0; i < M.mesh.count; i++) {
+              const e = M.mesh.instanceMatrix.array;
+              nearest = Math.min(nearest, Math.hypot(e[i * 16 + 12] - P.x, e[i * 16 + 14] - P.z));
+            }
+          const atLine = c.pilgrims.mataf.slice(0, c.active.mataf).filter((p) => Math.abs(wrap(p.th - we)) < 0.03);
+          const green = c.pilgrims.masa.slice(0, c.active.masa).filter((p) => p.z < -14 && p.z > -48);
+          return {
+            idtiba: [bareRightShoulder(mataf.mesh.geometry), bareRightShoulder(masa.mesh.geometry)],
+            drawn: c.stats.near + c.stats.far,
+            active: c.active.mataf + c.active.masa,
+            near: c.stats.near,
+            far: c.stats.far,
+            nearest,
+            atLine: atLine.map((p) => [p.raise, p.speed / p.v]),
+            greenMen: green.filter((p) => p.kind === 0 && !p.child).map((p) => p.speed / p.v),
+            greenWomen: green.filter((p) => p.kind === 1).map((p) => p.speed / p.v),
+          };
+        }, we);
+        assert.ok(r.idtiba[0] > 0, 'رجال المطاف بلا اضطباع');
+        assert.equal(r.idtiba[1], 0, 'رجال المسعى مضطبعون، والاضطباع في الطواف وحده');
+        assert.equal(r.drawn, r.active, 'كل حاجّ يُرسم مرة: هيئة كاملة أو بطاقة');
+        assert.ok(r.near > 0 && r.far > 0, `القريب ${r.near} والبعيد ${r.far}`);
+        assert.ok(r.nearest >= 1.39, `حاجّ على ${r.nearest.toFixed(2)} م من اللاعب`);
+        assert.ok(r.atLine.length > 0, 'لا أحد عند خط الحجر الأسود');
+        for (const [raise, slow] of r.atLine) assert.ok(raise > 0.3 && slow < 0.85, `عند الخط: رفع ${raise.toFixed(2)} وسرعة ${slow.toFixed(2)}`);
+        assert.ok(r.greenMen.length > 0 && r.greenMen.every((v) => Math.abs(v - 1.6) < 1e-6), 'الرجال لا يُسرعون بين العلمين');
+        assert.ok(r.greenWomen.every((v) => v === 1), 'النساء يُسرعن بين العلمين');
+      });
 
     test('الطواف: سبعة أشواط من الحجر الأسود، والحِجر يُلغي الشوط، والعكس يُكتشف', async () => {
       const target = await page.evaluate(() => window.__umrah.hud.model.target);
