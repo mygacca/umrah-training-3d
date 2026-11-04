@@ -201,9 +201,10 @@ function runUmrah(mode) {
         });
       // الحدود: قياس هذه النسخة وفوقه هامش نحو 20%. إن تجاوزتها إضافة، فراجع docs/realism-plan.md قبل رفعها
       // (في هذه الحالة: اللافتات ظاهرة، وكل لافتة أمر رسم، وحلقة الهدف وخط البداية ظاهران)
-      // قيست بعد الطبقة 2 (الهيئات القريبة والبطاقات البعيدة): الحاسوب 78 أمرًا و72 ألف مثلث (المستوى العالي)،
-      // والجوال 49 و40 ألفًا (المنخفض: 55% من الحشود)، وعلبة VR 71 و46 ألفًا لعين واحدة (نافذتها أفقية عريضة فترى أكثر)
-      const BUDGET = { desktop: { calls: 90, triangles: 87000 }, mobile: { calls: 57, triangles: 48000 }, cardboard: { calls: 83, triangles: 56000 } }[mode];
+      // قيست بعد الطبقة 4 (تفاصيل المعالم: أقواس ثلاثية الأبعاد، وتيجان الأعمدة، والقناديل...):
+      // الحاسوب 82 أمرًا و99 ألف مثلث (المستوى العالي)، والجوال 54 و67 ألفًا (المنخفض)، وعلبة VR 77 و74 ألفًا لعين واحدة.
+      // الطبقة 4 زادت نحو 27 ألف مثلث، وهو دون تقدير الخطة (+60–150 ألفًا) ودون حدود الأجهزة فيها (300–500 ألف للجوال)
+      const BUDGET = { desktop: { calls: 98, triangles: 119000 }, mobile: { calls: 65, triangles: 81000 }, cardboard: { calls: 92, triangles: 88000 } }[mode];
       const day = await measure();
       if (process.env.UMRAH_DEBUG) console.error('budget', mode, JSON.stringify(day));
       assert.ok(day.calls <= BUDGET.calls, `أوامر الرسم ${day.calls} > ${BUDGET.calls}`);
@@ -216,16 +217,21 @@ function runUmrah(mode) {
         await page.click('#menuClose');
         assert.equal(await page.evaluate(() => window.__umrah.atmosphere.time), 'night');
         assert.equal(await page.evaluate(() => window.__umrah.atmosphere.lamps.visible), true);
+        // قناديل الحِجر والأقواس تتوهّج ليلًا (الطبقة 4)
+        assert.ok(await page.evaluate(() => window.__umrah.world.lanternMat.emissive.getHex() !== 0 && window.__umrah.world.archMat.emissive.getHex() !== 0), 'لا توهّج ليلًا');
         const night = await measure();
         assert.ok(night.calls <= BUDGET.calls && night.triangles <= BUDGET.triangles, `ميزانية الليل ${JSON.stringify(night)}`);
         // الجودة المتوسطة من القائمة ترسم 80% من الحشود، ثم «تلقائية» تعيد العالية
         await page.keyboard.press('Escape');
         await page.click('[data-quality="medium"]');
-        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.world.crowds.active.mataf]), ['medium', 304]);
+        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.world.crowds.active.mataf, window.__umrah.materials.kiswaRes]), ['medium', 304, 1024]);
         await page.click('[data-quality="auto"]');
         await page.click('[data-time="asr"]');
         await page.click('#menuClose');
-        assert.deepEqual(await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.atmosphere.time, window.__umrah.atmosphere.lamps.visible]), ['high', 'asr', false]);
+        assert.deepEqual(
+          await page.evaluate(() => [window.__umrah.quality.tier, window.__umrah.atmosphere.time, window.__umrah.atmosphere.lamps.visible, window.__umrah.world.lanternMat.emissive.getHex(), window.__umrah.materials.kiswaRes]),
+          ['high', 'asr', false, 0, 2048],
+        );
         // نسبة البكسل تنخفض عن سقف المستوى حين تبقى الإطارات بطيئة ثانيتين (الرسم البرمجي هنا بطيء دائمًا)
         await page.waitForTimeout(5000);
         const { fps, pixelRatio, cap } = await page.evaluate(() => ({
@@ -239,12 +245,16 @@ function runUmrah(mode) {
 
     // الطبقة 2 من docs/realism-plan.md. في وضع واحد يكفي: الحشود واحدة في الأوضاع كلها
     if (mode === 'desktop')
-      test('الحشود الحيّة: الهيئات، والإشارة عند الحجر الأسود، والإسراع بين العلمين، والبطاقات البعيدة', async () => {
+      test('الحشود الحيّة: الهيئات، والتباعد، وإفساح الطريق للاعب، والإشارة عند الحجر الأسود، والإسراع بين العلمين', async () => {
         const bw = toWorld(...localAt(PSI_BLACK, 1));
         const we = Math.atan2(-bw[1], bw[0]); // زاوية خط الحجر الأسود
         const r = await page.evaluate((we) => {
-          const c = window.__umrah.world.crowds;
-          const P = window.__umrah.player.getPos();
+          const { world, player, step } = window.__umrah;
+          const c = world.crowds;
+          // اللاعب واقف في المسار قرب الركن العراقي، و10 ثوانٍ من المحاكاة
+          player.teleport(9.5, -6, -0.6, -0.8);
+          for (let i = 0; i < 300; i++) step(1 / 30);
+          const P = player.getPos();
           const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
           // الاضطباع: كتف أيمن مكشوف (بلون البشرة، لا يُصبغ) في رجال المطاف وحدهم
           const bareRightShoulder = (geo) => {
@@ -255,36 +265,108 @@ function runUmrah(mode) {
             return n;
           };
           const [mataf, masa] = [c.meshes.find((m) => m.area === 'mataf' && m.kind === 0), c.meshes.find((m) => m.area === 'masa' && m.kind === 0)];
-          // أقرب حاجّ مرسوم إلى اللاعب
-          let nearest = 1e9;
-          for (const M of c.meshes)
-            for (let i = 0; i < M.mesh.count; i++) {
-              const e = M.mesh.instanceMatrix.array;
-              nearest = Math.min(nearest, Math.hypot(e[i * 16 + 12] - P.x, e[i * 16 + 14] - P.z));
-            }
-          const atLine = c.pilgrims.mataf.slice(0, c.active.mataf).filter((p) => Math.abs(wrap(p.th - we)) < 0.03);
-          const green = c.pilgrims.masa.slice(0, c.active.masa).filter((p) => p.z < -14 && p.z > -48);
+          const ps = [...c.pilgrims.mataf.slice(0, c.active.mataf), ...c.pilgrims.masa.slice(0, c.active.masa)];
+          const minTo = (kind) => Math.min(...ps.filter((p) => p.kind === kind).map((p) => Math.hypot(p.x - P.x, p.z - P.z)));
+          // التباعد: كم حاجًّا له جار أقرب من 40 سم
+          let crowded = 0;
+          for (const a of ps) if (ps.some((b) => b !== a && Math.hypot(a.x - b.x, a.z - b.z) < 0.4)) crowded++;
+          // لا أحد دون حدّ المطاف المنعَّم (الكعبة والحِجر وما حولهما)
+          const inside = c.pilgrims.mataf.slice(0, c.active.mataf).filter((p) => Math.hypot(p.x, p.z) < c.laneAt(Math.atan2(-p.z, p.x)) - 0.36).length;
+          // الحد منعَّم: لا قفزة كبيرة بين زاويتين متجاورتين (كانت الأركان وفتحتا الحِجر تقفز)
+          let laneJump = 0;
+          for (let i = 0; i < 720; i++) laneJump = Math.max(laneJump, Math.abs(c.laneAt(((i + 1) / 720) * 2 * Math.PI) - c.laneAt((i / 720) * 2 * Math.PI)));
+          const mean = (a) => a.reduce((s, x) => s + x, 0) / Math.max(1, a.length);
+          const matafActive = c.pilgrims.mataf.slice(0, c.active.mataf);
+          const atLine = matafActive.filter((p) => Math.abs(wrap(Math.atan2(-p.z, p.x) - we)) < 0.03);
+          const away = matafActive.filter((p) => Math.abs(wrap(Math.atan2(-p.z, p.x) - we)) > 0.5);
+          const green = c.pilgrims.masa.slice(0, c.active.masa).filter((p) => p.z < -16 && p.z > -46 && !p.turning);
           return {
             idtiba: [bareRightShoulder(mataf.mesh.geometry), bareRightShoulder(masa.mesh.geometry)],
             drawn: c.stats.near + c.stats.far,
             active: c.active.mataf + c.active.masa,
             near: c.stats.near,
             far: c.stats.far,
-            nearest,
-            atLine: atLine.map((p) => [p.raise, p.speed / p.v]),
-            greenMen: green.filter((p) => p.kind === 0 && !p.child).map((p) => p.speed / p.v),
-            greenWomen: green.filter((p) => p.kind === 1).map((p) => p.speed / p.v),
+            minWoman: minTo(1),
+            minMan: minTo(0),
+            space: [c.space[0][1], c.space[1][1]],
+            crowded,
+            inside,
+            laneJump,
+            atLine: atLine.map((p) => p.raise),
+            slowAtLine: mean(atLine.map((p) => p.speed / p.v)),
+            speedAway: mean(away.map((p) => p.speed / p.v)),
+            greenMen: mean(green.filter((p) => p.kind === 0 && !p.child).map((p) => p.speed / p.v)),
+            greenWomen: mean(green.filter((p) => p.kind === 1).map((p) => p.speed / p.v)),
           };
         }, we);
+        if (process.env.UMRAH_DEBUG) console.error('crowds', JSON.stringify(r));
         assert.ok(r.idtiba[0] > 0, 'رجال المطاف بلا اضطباع');
         assert.equal(r.idtiba[1], 0, 'رجال المسعى مضطبعون، والاضطباع في الطواف وحده');
         assert.equal(r.drawn, r.active, 'كل حاجّ يُرسم مرة: هيئة كاملة أو بطاقة');
         assert.ok(r.near > 0 && r.far > 0, `القريب ${r.near} والبعيد ${r.far}`);
-        assert.ok(r.nearest >= 1.39, `حاجّ على ${r.nearest.toFixed(2)} م من اللاعب`);
-        assert.ok(r.atLine.length > 0, 'لا أحد عند خط الحجر الأسود');
-        for (const [raise, slow] of r.atLine) assert.ok(raise > 0.3 && slow < 0.85, `عند الخط: رفع ${raise.toFixed(2)} وسرعة ${slow.toFixed(2)}`);
-        assert.ok(r.greenMen.length > 0 && r.greenMen.every((v) => Math.abs(v - 1.6) < 1e-6), 'الرجال لا يُسرعون بين العلمين');
-        assert.ok(r.greenWomen.every((v) => v === 1), 'النساء يُسرعن بين العلمين');
+        // النساء أوسع مسافة من اللاعب
+        assert.ok(r.space[1] > r.space[0], 'مسافة النساء ليست أوسع');
+        assert.ok(r.minWoman >= r.space[1] - 0.01, `امرأة على ${r.minWoman.toFixed(2)} م من اللاعب`);
+        assert.ok(r.minMan >= r.space[0] - 0.01, `رجل على ${r.minMan.toFixed(2)} م من اللاعب`);
+        assert.ok(r.crowded <= r.active * 0.02, `${r.crowded} حاجًّا متلاصقون`);
+        assert.equal(r.inside, 0, 'حجاج داخل حدّ الكعبة أو الحِجر');
+        assert.ok(r.laneJump < 0.12, `حدّ المطاف يقفز ${r.laneJump.toFixed(2)} م بين زاويتين متجاورتين`);
+        assert.ok(r.atLine.length > 0 && r.atLine.every((x) => x > 0.3), 'لا رفع لليد عند خط الحجر الأسود');
+        assert.ok(r.slowAtLine < r.speedAway * 0.85, `عند الخط ${r.slowAtLine.toFixed(2)} وبعيدًا ${r.speedAway.toFixed(2)}`);
+        assert.ok(r.greenMen > 1.3 && r.greenWomen < 1.15, `بين العلمين: الرجال ${r.greenMen.toFixed(2)} والنساء ${r.greenWomen.toFixed(2)}`);
+        // كثافة الحشود من القائمة
+        await page.keyboard.press('Escape');
+        await page.click('[data-density="0.35"]');
+        assert.equal(await page.evaluate(() => window.__umrah.world.crowds.active.mataf), 133);
+        await page.click('[data-density="1"]');
+        await page.click('#menuClose');
+        assert.equal(await page.evaluate(() => window.__umrah.world.crowds.active.mataf), 380);
+      });
+
+    // الطبقة 4 من docs/realism-plan.md: تفاصيل المعالم تُبنى، وما تستبدله من المشهد القديم مخفي
+    if (mode === 'desktop')
+      test('تفاصيل المعالم: الأقواس والأعمدة والكعبة والحِجر والمسعى', async () => {
+        const r = await page.evaluate(() => {
+          const w = window.__umrah.world;
+          const arches = w.landmarkDetail.filter((o) => o.isInstancedMesh && o.material === w.archMat);
+          return {
+            arches: arches.map((a) => a.count),
+            oldArcadeHidden: w.arcadeWalls.every((a) => !a.visible),
+            columnVerts: w.columns.geometry.attributes.position.count,
+            shadharwanHidden: !w.shadharwan.visible,
+            doorX: w.door.position.x,
+            masaColumns: [w.masaColumns.count, w.masaColumns.visible],
+            parts: w.landmarkDetail.length,
+          };
+        });
+        assert.deepEqual(r.arches, [60, 60], 'أقواس الرواقين');
+        assert.ok(r.oldArcadeHidden, 'نسيج الأقواس القديم ما زال ظاهرًا');
+        assert.ok(r.columnVerts > 120, 'الأعمدة بلا قاعدة وتاج');
+        assert.ok(r.shadharwanHidden, 'الشاذروان القديم ما زال ظاهرًا');
+        assert.ok(r.doorX > 6.1, 'الباب ليس بارزًا عن الجدار');
+        assert.ok(r.masaColumns[0] >= 30 && r.masaColumns[1], 'صفّا أعمدة المسعى');
+        assert.ok(r.parts >= 8, `أجزاء المعالم ${r.parts}`);
+      });
+
+    // الطبقة 5 من docs/realism-plan.md: خرائط الخشونة والمعدنية، ودقة الكسوة بحسب المستوى
+    if (mode === 'desktop' || mode === 'mobile')
+      test('الأنسجة والمواد: رخام مصقول، وكسوة بلمعان النقش، وذهب معدني', async () => {
+        const r = await page.evaluate(() => {
+          const { world: w, materials: m } = window.__umrah;
+          const floor = w.mats.floor;
+          return {
+            floor: [!!floor.roughnessMap, !!floor.bumpMap, floor.roughness],
+            arcadeFloor: !!m.arcadeFloor && m.arcadeFloor.material.map !== floor.map,
+            kiswa: [m.kiswaRes, w.kiswaMat.roughnessMap.image.width],
+            gold: [w.bandMat, w.door.material].map((x) => !!x.metalnessMap && x.metalnessMap === x.roughnessMap),
+          };
+        });
+        assert.deepEqual(r.floor, [true, true, 1], 'رخام المطاف بلا خشونة أو تفاصيل');
+        assert.ok(r.arcadeFloor, 'رخام الأروقة نفس رخام المطاف');
+        // المستوى العالي (الحاسوب) 2048، والمنخفض (الجوال) 1024
+        const res = mode === 'desktop' ? 2048 : 1024;
+        assert.deepEqual(r.kiswa, [res, res], 'دقة نسيج الكسوة');
+        assert.deepEqual(r.gold, [true, true], 'حزام الكسوة والباب بلا خريطة معدنية');
       });
 
     test('الطواف: سبعة أشواط من الحجر الأسود، والحِجر يُلغي الشوط، والعكس يُكتشف', async () => {

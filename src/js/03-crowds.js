@@ -291,10 +291,16 @@ function createCrowds(scene) {
     pilgrims: { mataf, masa },
     stats: { near: 0, far: 0 },
   };
-  c.setFraction = (f) => {
+  // ما يُحرَّك ويُرسم: أقل الكسرين، من مستوى الجودة (setFraction) ومن اختيار المستخدم (setDensity)
+  let tierFraction = 1;
+  c.density = 1;
+  const applyActive = () => {
+    const f = Math.min(tierFraction, c.density);
     c.active.mataf = Math.round(CROWD_SIZE.mataf * f);
     c.active.masa = Math.round(CROWD_SIZE.masa * f);
   };
+  c.setFraction = (f) => ((tierFraction = f), applyActive());
+  c.setDensity = (f) => ((c.density = f), applyActive());
   c.setVisible = (v) => (c.visible = v);
   c.setNear = (d) => (c.near = d);
   c.setLight = ({ impostor, blob }) => {
@@ -302,64 +308,222 @@ function createCrowds(scene) {
     blobMat.opacity = blob;
   };
 
-  // ——— كل إطار: المشي، ثم توزيع الحجاج على الهيئات الكاملة أو البطاقات ———
+  // ——— محاكاة الحركة ———
+  // كل حاجّ له سرعة يتجه إليها بلطف، تجمع: اتجاه المسير، والبقاء على مساره، والتباعد عن جيرانه،
+  // وإفساح الطريق للاعب. ثم قيود صارمة: لا اختراق للكعبة ولا لجدار الحِجر ولا للمقام (Yc نفسها التي تمنع اللاعب)،
+  // ولا اقتراب من اللاعب دون حدّ أدنى. والنساء أوسع مسافة من اللاعب.
+  const SPACE = {
+    // [مسافة الراحة التي يبدأ عندها التنحّي، والحدّ الأدنى الذي لا يُتجاوز] بالمتر
+    [KIND.man]: [1.6, 1.0],
+    [KIND.woman]: [2.4, 1.6],
+  };
+  const SEP = 0.72; // التباعد بين حاجّين
+  // حدّ المطاف الداخلي منعَّمًا: أقصى قيمة في نافذة ±8° ثم متوسط ±6°، وفوقه نصف متر.
+  // الحد الخام (vd) يقفز عند الأركان وعند فتحتي الحِجر، فكان الحجاج يندفعون نحوها ثم يرتدّون
+  const lane = (() => {
+    const n = inner.length;
+    const mx = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let m = 0;
+      for (let k = -16; k <= 16; k++) m = Math.max(m, inner[(i + k + n) % n]);
+      mx[i] = m;
+    }
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let sum = 0;
+      for (let k = -12; k <= 12; k++) sum += mx[(i + k + n) % n];
+      out[i] = sum / 25 + 0.5;
+    }
+    return out;
+  })();
+  const laneAt = (th) => {
+    const f = (((th % le) + le) % le) / le * lane.length;
+    const i = Math.floor(f) % lane.length;
+    const j = (i + 1) % lane.length;
+    return lane[i] + (lane[j] - lane[i]) * (f - Math.floor(f));
+  };
+  c.laneAt = laneAt;
+
+  // شبكة مكانية بخلايا متر واحد للجيران
+  const GX0 = -60;
+  const GZ0 = -100;
+  const GW = 150;
+  const GH = 150;
+  const head = new Int32Array(GW * GH);
+  const next = new Int32Array(CROWD_SIZE.mataf + CROWD_SIZE.masa);
+  const all = [];
+  const cell = (x, z) => {
+    const gx = Math.floor(x - GX0);
+    const gz = Math.floor(z - GZ0);
+    return gx < 0 || gz < 0 || gx >= GW || gz >= GH ? -1 : gz * GW + gx;
+  };
+
+  // المواضع الأولى
+  for (const p of mataf) {
+    const r = Math.max(p.r0, laneAt(p.th));
+    p.x = Math.cos(p.th) * r;
+    p.z = -Math.sin(p.th) * r;
+    p.vx = p.vz = 0;
+  }
+  for (const p of masa) (p.vx = p.vz = 0), (p.turning = false);
+
+  // تفادي اللاعب: إبطاء إن كان أمامه، وتنحٍّ جانبًا، يزدادان كلما اقترب
+  function avoidPlayer(p, px, pz, fx, fz) {
+    const [comfort] = SPACE[p.kind];
+    const dx = p.x - px;
+    const dz = p.z - pz;
+    const d = Math.hypot(dx, dz) || 1e-3;
+    const reach = comfort * 1.8;
+    if (d > reach) return { slow: 1, ax: 0, az: 0 };
+    const ahead = -(fx * dx + fz * dz) / d; // 1: اللاعب أمامه تمامًا
+    const slow = ahead > 0.2 ? Math.max(0.1, Math.min(1, (d - comfort * 0.7) / comfort)) : 1;
+    const k = ((reach - d) / reach) * 2.2;
+    return { slow, ax: (dx / d) * k, az: (dz / d) * k };
+  }
+  function separation(p, idx) {
+    let sx = 0;
+    let sz = 0;
+    const gx = Math.floor(p.x - GX0);
+    const gz = Math.floor(p.z - GZ0);
+    for (let oz = -1; oz <= 1; oz++)
+      for (let ox = -1; ox <= 1; ox++) {
+        const X = gx + ox;
+        const Z = gz + oz;
+        if (X < 0 || Z < 0 || X >= GW || Z >= GH) continue;
+        for (let j = head[Z * GW + X]; j !== -1; j = next[j]) {
+          if (j === idx) continue;
+          const o = all[j];
+          const dx = p.x - o.x;
+          const dz = p.z - o.z;
+          const d2 = dx * dx + dz * dz;
+          if (d2 > SEP * SEP || d2 < 1e-8) continue;
+          const d = Math.sqrt(d2);
+          const k = ((SEP - d) / SEP) * 1.8;
+          sx += (dx / d) * k;
+          sz += (dz / d) * k;
+        }
+      }
+    return [sx, sz];
+  }
+  // الحدّ الأدنى من اللاعب، ثم الكعبة والحِجر والمقام
+  function constrain(p, px, pz) {
+    const [, hard] = SPACE[p.kind];
+    const dx = p.x - px;
+    const dz = p.z - pz;
+    const d = Math.hypot(dx, dz);
+    if (d < hard) {
+      const ux = d > 1e-3 ? dx / d : 1;
+      const uz = d > 1e-3 ? dz / d : 0;
+      p.x = px + ux * hard;
+      p.z = pz + uz * hard;
+    }
+    if (p.area === "mataf") {
+      [p.x, p.z] = Yc(p.x, p.z);
+      // لا داخل الحِجر ولا دون المسار المنعَّم إلا قليلًا
+      const th = Math.atan2(-p.z, p.x);
+      const r = Math.hypot(p.x, p.z);
+      const min = laneAt(th) - 0.35;
+      if (r < min || qc(p.x, p.z)) (p.x = Math.cos(th) * min), (p.z = -Math.sin(th) * min);
+    }
+  }
+  const steer = (p, ix, iz, delta) => {
+    const k = Math.min(1, delta * 5);
+    p.vx += (ix - p.vx) * k;
+    p.vz += (iz - p.vz) * k;
+    p.x += p.vx * delta;
+    p.z += p.vz * delta;
+    const sp = Math.hypot(p.vx, p.vz);
+    p.speed = sp;
+    // يواجه اتجاه مشيه (الأمام المحلي -Z)
+    if (sp > 0.15) {
+      const want = Math.atan2(-p.vx, -p.vz);
+      p.heading = p.heading === undefined ? want : p.heading + ll(want - p.heading) * Math.min(1, delta * 6);
+    }
+  };
+  function stepMataf(p, idx, delta, px, pz) {
+    const th = Math.atan2(-p.z, p.x);
+    const r = Math.hypot(p.x, p.z);
+    // عند خط الحجر الأسود: يتباطأ ويلتفت إلى الكعبة ويرفع يده اليمنى
+    const d = Math.abs(ll(th - we));
+    const target = d < 0.09 ? 1 - d / 0.09 : 0;
+    p.raise += (target - p.raise) * Math.min(1, delta * 6);
+    const tx = -Math.sin(th); // المماس: عكس عقارب الساعة، والكعبة عن اليسار
+    const tz = -Math.cos(th);
+    const nx = Math.cos(th); // إلى الخارج
+    const nz = -Math.sin(th);
+    const av = avoidPlayer(p, px, pz, tx, tz);
+    const v = p.v * (1 - 0.55 * p.raise) * av.slow;
+    const want = Math.max(p.r0, laneAt(th));
+    const pull = Math.max(-0.6, Math.min(0.6, (want - r) * 0.8));
+    const [sx, sz] = separation(p, idx);
+    steer(p, tx * v + nx * pull + sx + av.ax, tz * v + nz * pull + sz + av.az, delta);
+    constrain(p, px, pz);
+    p.yaw = (p.heading ?? th) + p.raise * 1.1; // يلتفت يسارًا نحو الكعبة
+  }
+  // (اسم المعامل delta لا dt: dt ثوابت المسعى في 02-layout.js)
+  function stepMasa(p, idx, delta, px, pz) {
+    // الرجال وحدهم يُسرعون بين العلمين الأخضرين
+    const green = p.z < dt.gA && p.z > dt.gB && p.kind === KIND.man && !p.child;
+    // نصفا المسعى: الذاهب إلى المروة (z يتناقص) غربي الحاجز، والعائد شرقيه
+    const half = p.dir < 0 ? [67.4, 73.8] : [76.4, 82.8];
+    const prefX = half[0] + p.lane;
+    // عند الطرفين يستدير ويعبر إلى النصف الآخر قبل أن يعود، بدل القفز إليه
+    if (p.z < dt.walkM + 2 && p.dir < 0) (p.dir = 1), (p.turning = true);
+    else if (p.z > dt.walkS - 2 && p.dir > 0) (p.dir = -1), (p.turning = true);
+    const crossing = p.turning && Math.abs(p.x - prefX) > 0.6;
+    if (!crossing) p.turning = false;
+    const av = avoidPlayer(p, px, pz, 0, p.dir);
+    const v = p.v * (green ? 1.6 : 1) * av.slow * (crossing ? 0.25 : 1);
+    const lateral = Math.max(-1.4, Math.min(1.4, (prefX - p.x) * (crossing ? 1.2 : 0.5)));
+    const [sx, sz] = separation(p, idx);
+    steer(p, lateral + sx + av.ax, p.dir * v + sz + av.az, delta);
+    // داخل امتداد الحاجز الأوسط يبقى كل حاجّ في نصفه
+    const byDivider = p.z > dt.divider.z0 - 0.5 && p.z < dt.divider.z1 + 0.5;
+    const side = p.x < dt.xc ? [67.4, 74.0] : [76.0, 82.8];
+    const lim = byDivider ? side : [67.4, 82.8];
+    p.x = Math.max(lim[0], Math.min(lim[1], p.x));
+    p.z = Math.max(dt.walkM + 0.5, Math.min(dt.walkS - 0.5, p.z));
+    constrain(p, px, pz);
+    p.yaw = p.heading ?? (p.dir > 0 ? Math.PI : 0);
+    p.raise = 0;
+  }
+
+  // ——— كل إطار: المحاكاة، ثم توزيع الحجاج على الهيئات الكاملة أو البطاقات ———
   const m4 = new Matrix4();
   const q = new Quaternion();
   const pos = new Vector3();
   const scl = new Vector3();
   const up = new Vector3(0, 1, 0);
-  const AVOID = 1.4; // يُبعَد الحاجّ عن اللاعب إن اقترب أقل من هذا (كما كان قبل هذه الطبقة)
   let time = 0;
-  function stepMataf(p, delta) {
-    const idx = Math.floor((((p.th % le) + le) % le) / le * 720) % 720;
-    const r = Math.max(p.r0, inner[idx]);
-    // عند خط الحجر الأسود: يتباطأ ويلتفت إلى الكعبة ويرفع يده اليمنى
-    const d = Math.abs(ll(p.th - we));
-    const target = d < 0.09 ? 1 - d / 0.09 : 0;
-    p.raise += (target - p.raise) * Math.min(1, delta * 6);
-    const v = p.v * (1 - 0.55 * p.raise);
-    p.th += (v / r) * delta; // عكس عقارب الساعة: الكعبة عن اليسار
-    p.x = Math.cos(p.th) * r;
-    p.z = -Math.sin(p.th) * r;
-    p.yaw = p.th + p.raise * 1.1; // يلتفت يسارًا نحو الكعبة
-    p.speed = v;
-  }
-  // (اسم المعامل delta لا dt: dt ثوابت المسعى في 02-layout.js)
-  function stepMasa(p, delta) {
-    // الرجال وحدهم يُسرعون بين العلمين الأخضرين
-    const green = p.z < dt.gA && p.z > dt.gB && p.kind === KIND.man && !p.child;
-    const v = p.v * (green ? 1.6 : 1);
-    p.z += p.dir * v * delta;
-    if (p.z < dt.walkM + 0.8) (p.dir = 1), (p.x = 76.4 + p.lane);
-    else if (p.z > dt.walkS - 0.8) (p.dir = -1), (p.x = 67.4 + p.lane);
-    p.yaw = p.dir > 0 ? Math.PI : 0;
-    p.speed = v;
-    p.raise = 0;
-  }
   c.update = (delta, player) => {
     time += delta;
+    delta = Math.min(delta, 0.05);
     const px = player ? player.x : 1e6;
     const pz = player ? player.z : 1e6;
     for (const M of meshes) M.n = 0;
     let nImp = 0;
     let near = 0;
+    // الشبكة من مواضع الإطار السابق
+    all.length = 0;
+    for (let i = 0; i < c.active.mataf; i++) all.push(mataf[i]);
+    for (let i = 0; i < c.active.masa; i++) all.push(masa[i]);
+    head.fill(-1);
+    all.forEach((p, i) => {
+      const k = cell(p.x, p.z);
+      next[i] = -1;
+      if (k >= 0) (next[i] = head[k]), (head[k] = i);
+    });
     const place = (p) => {
-      // تفادي اللاعب
-      let x = p.x;
-      let z = p.z;
-      const dx = x - px;
-      const dz = z - pz;
-      const d = Math.hypot(dx, dz);
-      if (d < AVOID && d > 1e-3) (x += (dx / d) * (AVOID - d)), (z += (dz / d) * (AVOID - d));
+      const dist = Math.hypot(p.x - px, p.z - pz);
       const amp = Math.min(1, p.speed / 1.2);
       p.ph += delta * (p.speed / 0.75) * Math.PI * (p.child ? 1.4 : 1);
       const bob = 0.03 * amp * Math.abs(Math.sin(p.ph));
-      const shade = c.shadeAt ? c.shadeAt(x, z) : 1;
+      const shade = c.shadeAt ? c.shadeAt(p.x, p.z) : 1;
       q.setFromAxisAngle(up, p.yaw);
-      pos.set(x, bob, z);
+      pos.set(p.x, bob, p.z);
       scl.set(p.s, p.s, p.s);
       m4.compose(pos, q, scl);
-      if (d < c.near) {
+      if (dist < c.near) {
         const M = byKind[p.area][p.kind];
         const i = M.n++;
         M.mesh.setMatrixAt(i, m4);
@@ -374,8 +538,8 @@ function createCrowds(scene) {
       }
     };
     if (c.visible) {
-      for (let i = 0; i < c.active.mataf; i++) stepMataf(mataf[i], delta), place(mataf[i]);
-      for (let i = 0; i < c.active.masa; i++) stepMasa(masa[i], delta), place(masa[i]);
+      all.forEach((p, i) => (p.area === "mataf" ? stepMataf(p, i, delta, px, pz) : stepMasa(p, i, delta, px, pz)));
+      all.forEach(place);
     }
     for (const M of meshes) {
       M.mesh.count = M.blob.count = M.n;
@@ -386,5 +550,6 @@ function createCrowds(scene) {
     c.stats.near = near;
     c.stats.far = nImp;
   };
+  c.space = SPACE;
   return c;
 }

@@ -389,6 +389,12 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       <button type="button" data-time="asr" aria-pressed="false">العصر</button>
       <button type="button" data-time="night" aria-pressed="false">الليل</button>
     </div>
+    <h3>كثافة الحشود</h3>
+    <div class="jumps choices">
+      <button type="button" data-density="0.35" aria-pressed="false">خفيفة</button>
+      <button type="button" data-density="0.65" aria-pressed="false">متوسطة</button>
+      <button type="button" data-density="1" aria-pressed="false">كثيفة</button>
+    </div>
     <h3>الجودة</h3>
     <div class="jumps choices">
       <button type="button" data-quality="auto" aria-pressed="false">تلقائية</button>
@@ -4686,6 +4692,7 @@ var Vector2 = gt,
   PlaneGeometry = Ve,
   SphereGeometry = fn,
   CylinderGeometry = Re,
+  RingGeometry = ws,
   MeshBasicMaterial = Le,
   ShaderMaterial = rn,
   CanvasTexture = Ui,
@@ -4693,6 +4700,236 @@ var Vector2 = gt,
   BackSide = Oe,
   InstancedMesh = kn,
   InstancedBufferAttribute = vs;
+// الأنسجة والمواد (الطبقة 5 من docs/realism-plan.md). دوال فقط، يستدعيها 11-main.js بعد بناء المشهد.
+// كل الأنسجة تُرسم على canvas عند التحميل، فلا يزيد الملف. والقاعدة في three.js:
+// roughnessMap تقرأ القناة الخضراء، وmetalnessMap الزرقاء، فنسيج واحد (ORM) يخدم الاثنين.
+
+function cpuCanvas(w, h = w) {
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  c.getContext("2d", { willReadFrequently: true });
+  return c;
+}
+
+// خشونة الرخام بنفس شبكة بلاط Gc (2×2 بلاطة لكل نسيج 512): البلاط مصقول يلمع، والفواصل خشنة،
+// ولكل بلاطة صقل يختلف قليلًا كما في الأرض الحقيقية
+function marbleRoughness(seed, { polish = 0.2 } = {}) {
+  const c = cpuCanvas(512);
+  const x = c.getContext("2d");
+  const rnd = Xr(seed + 101);
+  for (let t = 0; t < 4; t++) {
+    const g = Math.round(255 * (polish + rnd() * 0.08));
+    x.fillStyle = `rgb(255,${g},0)`;
+    x.fillRect((t % 2) * 256, Math.floor(t / 2) * 256, 256, 256);
+    // بقع خفيفة من الاستعمال
+    for (let k = 0; k < 6; k++) {
+      const cx = (t % 2) * 256 + rnd() * 256;
+      const cy = Math.floor(t / 2) * 256 + rnd() * 256;
+      const r = 20 + rnd() * 60;
+      const gr = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+      gr.addColorStop(0, `rgba(255,${g + 40},0,0.35)`);
+      gr.addColorStop(1, `rgba(255,${g},0,0)`);
+      x.fillStyle = gr;
+      x.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+    }
+  }
+  x.strokeStyle = "rgb(255,235,0)";
+  x.lineWidth = 3;
+  for (let l = 0; l <= 2; l++) {
+    x.beginPath();
+    x.moveTo(l * 256, 0);
+    x.lineTo(l * 256, 512);
+    x.moveTo(0, l * 256);
+    x.lineTo(512, l * 256);
+    x.stroke();
+  }
+  return c;
+}
+// حبيبات الحجر عن قرب (تُستعمل bumpMap بتكرار كثيف)
+function stoneDetail() {
+  const c = cpuCanvas(256);
+  const x = c.getContext("2d");
+  const img = x.createImageData(256, 256);
+  const rnd = Xr(77);
+  for (let i = 0; i < 256 * 256; i++) {
+    const v = 118 + rnd() * 20 + (rnd() < 0.02 ? 50 : 0);
+    img.data.set([v, v, v, 255], i * 4);
+  }
+  x.putImageData(img, 0, 0);
+  // تنعيم بالرسم فوق نفسها مزاحة قليلًا (الحبيبات صغيرة لكن غير حادة)
+  x.globalAlpha = 0.5;
+  x.drawImage(c, 1, 0);
+  x.drawImage(c, 0, 1);
+  return c;
+}
+// نسيج من canvas مع التكرار والتحسين نفسيهما (Mn في 01-textures.js للألوان)
+function dataTexture(canvas, repeat, { srgb = false } = {}) {
+  const t = new CanvasTexture(canvas);
+  if (srgb) t.colorSpace = SRGBColorSpace;
+  t.wrapS = t.wrapT = fs;
+  t.repeat.set(repeat[0], repeat[1]);
+  t.anisotropy = 8;
+  return t;
+}
+
+// ذهب على أسود (حزام الكسوة والباب): المعدن حيث اللون ذهبي، والباقي حرير أسود مطفأ.
+// يُشتق من نسيج اللون نفسه، فيطابقه تمامًا
+function goldORM(colorCanvas) {
+  const w = colorCanvas.width;
+  const h = colorCanvas.height;
+  const c = cpuCanvas(w, h);
+  const x = c.getContext("2d");
+  x.drawImage(colorCanvas, 0, 0);
+  const img = x.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i];
+    const g = d[i + 1];
+    const b = d[i + 2];
+    // ذهبي: فاتح ومائل إلى الأحمر والأخضر أكثر من الأزرق
+    const gold = Math.max(0, Math.min(1, (r - 70) / 110)) * (r > b * 1.25 ? 1 : 0);
+    d[i] = 255;
+    d[i + 1] = Math.round(255 * (0.78 - 0.52 * gold)); // الخشونة: 0.26 للذهب، و0.78 للحرير
+    d[i + 2] = Math.round(255 * gold); // المعدنية
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+
+// الكسوة: حرير أسود، والنقش يظهر باللمعان لا باللون، كما في نسج الجاكار.
+// النقش هندسي فقط: لا نكتب نصًا شرعيًا في النسيج (قاعدة CLAUDE.md)
+function kiswaPattern(x, size, kind) {
+  const cells = 8;
+  const s = size / cells;
+  const rough = kind === "rough";
+  x.fillStyle = rough ? "rgb(255,220,0)" : "#0c0c0d"; // الخلفية: خشونة 0.86
+  x.fillRect(0, 0, size, size);
+  const line = rough ? "rgb(255,135,0)" : "rgba(70,70,74,0.22)"; // النقش: خشونة 0.53 (أقل تباينًا من الخلفية 0.86، كالجاكار)
+  x.strokeStyle = line;
+  x.fillStyle = line;
+  x.lineWidth = Math.max(1, s * 0.035);
+  for (let row = 0; row <= cells; row++)
+    for (let col = 0; col <= cells; col++) {
+      const ox = (row % 2 ? s / 2 : 0) + col * s;
+      const oy = row * s;
+      const k = s * 0.34;
+      x.beginPath();
+      x.moveTo(ox, oy - k);
+      x.lineTo(ox + k, oy);
+      x.lineTo(ox, oy + k);
+      x.lineTo(ox - k, oy);
+      x.closePath();
+      x.stroke();
+      // نجمة ثمانية في كل خلية، ودائرة في مركزها
+      Vc(x, ox, oy, s * 0.17, s * 0.08, 8);
+      x.stroke();
+      x.beginPath();
+      x.arc(ox, oy, s * 0.04, 0, le);
+      x.fill();
+      // خيوط النسج الأفقية الدقيقة (تظهر في الخشونة فقط)
+      if (rough) {
+        x.save();
+        x.globalAlpha = 0.25;
+        x.lineWidth = 1;
+        for (let t = 0; t < 6; t++) {
+          const yy = oy + (t / 6) * s;
+          x.beginPath();
+          x.moveTo(ox - s / 2, yy);
+          x.lineTo(ox + s / 2, yy);
+          x.stroke();
+        }
+        x.restore();
+      }
+    }
+}
+
+function upgradeMaterials(scene, world) {
+  const mats = { kiswaRes: 0 };
+  const detail = dataTexture(stoneDetail(), [1, 1]);
+
+  // ——— الأرض ———
+  // المطاف: رخام أبيض بارد يلمع
+  const floor = world.mats.floor;
+  {
+    const rep = [floor.map.repeat.x, floor.map.repeat.y];
+    floor.map = Mn(Gc({ base: "#f3f6f7", vein: "140,150,160", grout: "rgba(150,158,162,0.4)", seed: 7 }), { repeat: rep });
+    floor.roughnessMap = dataTexture(marbleRoughness(7, { polish: 0.14 }), rep);
+    floor.roughness = 1;
+    floor.bumpMap = dataTexture(stoneDetail(), [rep[0] * 9, rep[1] * 9]);
+    floor.bumpScale = 0.25;
+    floor.envMapIntensity = 1.15;
+    floor.needsUpdate = true;
+  }
+  // الأروقة: رخام دافئ أقل صقلًا. حلقة بنفس إسقاط قرص المطاف، فتتصل الشبكة بين الرخامين
+  {
+    const R = pe.outer + 0.5;
+    const rep = [floor.map.repeat.x, floor.map.repeat.y];
+    const warm = Se("#ffffff", {
+      map: Mn(Gc({ base: "#efe5d3", vein: "170,140,100", grout: "rgba(160,140,110,0.45)", seed: 31 }), { repeat: rep }),
+      roughnessMap: dataTexture(marbleRoughness(31, { polish: 0.3 }), rep),
+      roughness: 1,
+      bumpMap: floor.bumpMap,
+      bumpScale: 0.25,
+    });
+    const ring = new Mesh(new RingGeometry(pe.arcIn - 0.5, R, 128, 1), warm);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.012;
+    scene.add(ring);
+    mats.arcadeFloor = ring;
+  }
+  // المسعى: رخام أبيض مصقول كالمطاف
+  {
+    const m = world.masaFloorMat;
+    const rep = [m.map.repeat.x, m.map.repeat.y];
+    m.roughnessMap = dataTexture(marbleRoughness(21, { polish: 0.16 }), rep);
+    m.roughness = 1;
+    m.bumpMap = dataTexture(stoneDetail(), [rep[0] * 9, rep[1] * 9]);
+    m.bumpScale = 0.25;
+    m.needsUpdate = true;
+  }
+
+  // ——— الذهب: حزام الكسوة والباب ———
+  for (const m of [world.bandMat, world.door.material]) {
+    const orm = dataTexture(goldORM(m.map.image), [m.map.repeat.x, m.map.repeat.y]);
+    m.roughnessMap = m.metalnessMap = orm;
+    m.roughness = m.metalness = 1;
+    m.envMapIntensity = 1.4;
+    m.needsUpdate = true;
+  }
+
+  // ——— الكسوة ———
+  const kiswa = world.kiswaMat;
+  {
+    const rep = [kiswa.map.repeat.x, kiswa.map.repeat.y];
+    const color = cpuCanvas(512);
+    kiswaPattern(color.getContext("2d"), 512, "color");
+    kiswa.map = Mn(color, { repeat: rep });
+    kiswa.metalness = 0.04;
+    kiswa.roughness = 1;
+    kiswa.needsUpdate = true;
+    mats.kiswaRepeat = rep;
+  }
+  // الدقة بحسب مستوى الجودة: 2048 في العالي، و1024 في غيره (05-quality.js)
+  mats.setKiswaRes = (res) => {
+    if (res === mats.kiswaRes) return;
+    mats.kiswaRes = res;
+    const c = cpuCanvas(res);
+    kiswaPattern(c.getContext("2d"), res, "rough");
+    const old = kiswa.roughnessMap;
+    kiswa.roughnessMap = dataTexture(c, mats.kiswaRepeat);
+    kiswa.needsUpdate = true;
+    if (old) old.dispose();
+  };
+  mats.setKiswaRes(1024);
+
+  // ——— الأعمدة والأقواس: رخام أصقل قليلًا ———
+  world.mats.column.roughness = 0.6;
+  if (world.archMat) world.archMat.roughness = 0.7;
+
+  world.materials = mats;
+  return mats;
+}
 function Xr(i) {
   let t = i >>> 0;
   return () => ((t = (t * 1664525 + 1013904223) >>> 0), t / 4294967296);
@@ -5515,6 +5752,7 @@ function createAtmosphere({ scene, renderer, world }) {
     for (const [mat, color, k] of [
       [world.minaretMat, "#ffd8a0", 0.32],
       [world.arcadeMat, "#ffcf8c", 0.22],
+      ...(world.glowMats || []), // تفاصيل المعالم (03-landmarks.js): الأقواس، والقناديل، والدرابزين
     ]) {
       mat.emissive.set(T.night ? color : "#000000");
       mat.emissiveIntensity = T.night ? k : 1;
@@ -5830,10 +6068,16 @@ function createCrowds(scene) {
     pilgrims: { mataf, masa },
     stats: { near: 0, far: 0 },
   };
-  c.setFraction = (f) => {
+  // ما يُحرَّك ويُرسم: أقل الكسرين، من مستوى الجودة (setFraction) ومن اختيار المستخدم (setDensity)
+  let tierFraction = 1;
+  c.density = 1;
+  const applyActive = () => {
+    const f = Math.min(tierFraction, c.density);
     c.active.mataf = Math.round(CROWD_SIZE.mataf * f);
     c.active.masa = Math.round(CROWD_SIZE.masa * f);
   };
+  c.setFraction = (f) => ((tierFraction = f), applyActive());
+  c.setDensity = (f) => ((c.density = f), applyActive());
   c.setVisible = (v) => (c.visible = v);
   c.setNear = (d) => (c.near = d);
   c.setLight = ({ impostor, blob }) => {
@@ -5841,64 +6085,222 @@ function createCrowds(scene) {
     blobMat.opacity = blob;
   };
 
-  // ——— كل إطار: المشي، ثم توزيع الحجاج على الهيئات الكاملة أو البطاقات ———
+  // ——— محاكاة الحركة ———
+  // كل حاجّ له سرعة يتجه إليها بلطف، تجمع: اتجاه المسير، والبقاء على مساره، والتباعد عن جيرانه،
+  // وإفساح الطريق للاعب. ثم قيود صارمة: لا اختراق للكعبة ولا لجدار الحِجر ولا للمقام (Yc نفسها التي تمنع اللاعب)،
+  // ولا اقتراب من اللاعب دون حدّ أدنى. والنساء أوسع مسافة من اللاعب.
+  const SPACE = {
+    // [مسافة الراحة التي يبدأ عندها التنحّي، والحدّ الأدنى الذي لا يُتجاوز] بالمتر
+    [KIND.man]: [1.6, 1.0],
+    [KIND.woman]: [2.4, 1.6],
+  };
+  const SEP = 0.72; // التباعد بين حاجّين
+  // حدّ المطاف الداخلي منعَّمًا: أقصى قيمة في نافذة ±8° ثم متوسط ±6°، وفوقه نصف متر.
+  // الحد الخام (vd) يقفز عند الأركان وعند فتحتي الحِجر، فكان الحجاج يندفعون نحوها ثم يرتدّون
+  const lane = (() => {
+    const n = inner.length;
+    const mx = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let m = 0;
+      for (let k = -16; k <= 16; k++) m = Math.max(m, inner[(i + k + n) % n]);
+      mx[i] = m;
+    }
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let sum = 0;
+      for (let k = -12; k <= 12; k++) sum += mx[(i + k + n) % n];
+      out[i] = sum / 25 + 0.5;
+    }
+    return out;
+  })();
+  const laneAt = (th) => {
+    const f = (((th % le) + le) % le) / le * lane.length;
+    const i = Math.floor(f) % lane.length;
+    const j = (i + 1) % lane.length;
+    return lane[i] + (lane[j] - lane[i]) * (f - Math.floor(f));
+  };
+  c.laneAt = laneAt;
+
+  // شبكة مكانية بخلايا متر واحد للجيران
+  const GX0 = -60;
+  const GZ0 = -100;
+  const GW = 150;
+  const GH = 150;
+  const head = new Int32Array(GW * GH);
+  const next = new Int32Array(CROWD_SIZE.mataf + CROWD_SIZE.masa);
+  const all = [];
+  const cell = (x, z) => {
+    const gx = Math.floor(x - GX0);
+    const gz = Math.floor(z - GZ0);
+    return gx < 0 || gz < 0 || gx >= GW || gz >= GH ? -1 : gz * GW + gx;
+  };
+
+  // المواضع الأولى
+  for (const p of mataf) {
+    const r = Math.max(p.r0, laneAt(p.th));
+    p.x = Math.cos(p.th) * r;
+    p.z = -Math.sin(p.th) * r;
+    p.vx = p.vz = 0;
+  }
+  for (const p of masa) (p.vx = p.vz = 0), (p.turning = false);
+
+  // تفادي اللاعب: إبطاء إن كان أمامه، وتنحٍّ جانبًا، يزدادان كلما اقترب
+  function avoidPlayer(p, px, pz, fx, fz) {
+    const [comfort] = SPACE[p.kind];
+    const dx = p.x - px;
+    const dz = p.z - pz;
+    const d = Math.hypot(dx, dz) || 1e-3;
+    const reach = comfort * 1.8;
+    if (d > reach) return { slow: 1, ax: 0, az: 0 };
+    const ahead = -(fx * dx + fz * dz) / d; // 1: اللاعب أمامه تمامًا
+    const slow = ahead > 0.2 ? Math.max(0.1, Math.min(1, (d - comfort * 0.7) / comfort)) : 1;
+    const k = ((reach - d) / reach) * 2.2;
+    return { slow, ax: (dx / d) * k, az: (dz / d) * k };
+  }
+  function separation(p, idx) {
+    let sx = 0;
+    let sz = 0;
+    const gx = Math.floor(p.x - GX0);
+    const gz = Math.floor(p.z - GZ0);
+    for (let oz = -1; oz <= 1; oz++)
+      for (let ox = -1; ox <= 1; ox++) {
+        const X = gx + ox;
+        const Z = gz + oz;
+        if (X < 0 || Z < 0 || X >= GW || Z >= GH) continue;
+        for (let j = head[Z * GW + X]; j !== -1; j = next[j]) {
+          if (j === idx) continue;
+          const o = all[j];
+          const dx = p.x - o.x;
+          const dz = p.z - o.z;
+          const d2 = dx * dx + dz * dz;
+          if (d2 > SEP * SEP || d2 < 1e-8) continue;
+          const d = Math.sqrt(d2);
+          const k = ((SEP - d) / SEP) * 1.8;
+          sx += (dx / d) * k;
+          sz += (dz / d) * k;
+        }
+      }
+    return [sx, sz];
+  }
+  // الحدّ الأدنى من اللاعب، ثم الكعبة والحِجر والمقام
+  function constrain(p, px, pz) {
+    const [, hard] = SPACE[p.kind];
+    const dx = p.x - px;
+    const dz = p.z - pz;
+    const d = Math.hypot(dx, dz);
+    if (d < hard) {
+      const ux = d > 1e-3 ? dx / d : 1;
+      const uz = d > 1e-3 ? dz / d : 0;
+      p.x = px + ux * hard;
+      p.z = pz + uz * hard;
+    }
+    if (p.area === "mataf") {
+      [p.x, p.z] = Yc(p.x, p.z);
+      // لا داخل الحِجر ولا دون المسار المنعَّم إلا قليلًا
+      const th = Math.atan2(-p.z, p.x);
+      const r = Math.hypot(p.x, p.z);
+      const min = laneAt(th) - 0.35;
+      if (r < min || qc(p.x, p.z)) (p.x = Math.cos(th) * min), (p.z = -Math.sin(th) * min);
+    }
+  }
+  const steer = (p, ix, iz, delta) => {
+    const k = Math.min(1, delta * 5);
+    p.vx += (ix - p.vx) * k;
+    p.vz += (iz - p.vz) * k;
+    p.x += p.vx * delta;
+    p.z += p.vz * delta;
+    const sp = Math.hypot(p.vx, p.vz);
+    p.speed = sp;
+    // يواجه اتجاه مشيه (الأمام المحلي -Z)
+    if (sp > 0.15) {
+      const want = Math.atan2(-p.vx, -p.vz);
+      p.heading = p.heading === undefined ? want : p.heading + ll(want - p.heading) * Math.min(1, delta * 6);
+    }
+  };
+  function stepMataf(p, idx, delta, px, pz) {
+    const th = Math.atan2(-p.z, p.x);
+    const r = Math.hypot(p.x, p.z);
+    // عند خط الحجر الأسود: يتباطأ ويلتفت إلى الكعبة ويرفع يده اليمنى
+    const d = Math.abs(ll(th - we));
+    const target = d < 0.09 ? 1 - d / 0.09 : 0;
+    p.raise += (target - p.raise) * Math.min(1, delta * 6);
+    const tx = -Math.sin(th); // المماس: عكس عقارب الساعة، والكعبة عن اليسار
+    const tz = -Math.cos(th);
+    const nx = Math.cos(th); // إلى الخارج
+    const nz = -Math.sin(th);
+    const av = avoidPlayer(p, px, pz, tx, tz);
+    const v = p.v * (1 - 0.55 * p.raise) * av.slow;
+    const want = Math.max(p.r0, laneAt(th));
+    const pull = Math.max(-0.6, Math.min(0.6, (want - r) * 0.8));
+    const [sx, sz] = separation(p, idx);
+    steer(p, tx * v + nx * pull + sx + av.ax, tz * v + nz * pull + sz + av.az, delta);
+    constrain(p, px, pz);
+    p.yaw = (p.heading ?? th) + p.raise * 1.1; // يلتفت يسارًا نحو الكعبة
+  }
+  // (اسم المعامل delta لا dt: dt ثوابت المسعى في 02-layout.js)
+  function stepMasa(p, idx, delta, px, pz) {
+    // الرجال وحدهم يُسرعون بين العلمين الأخضرين
+    const green = p.z < dt.gA && p.z > dt.gB && p.kind === KIND.man && !p.child;
+    // نصفا المسعى: الذاهب إلى المروة (z يتناقص) غربي الحاجز، والعائد شرقيه
+    const half = p.dir < 0 ? [67.4, 73.8] : [76.4, 82.8];
+    const prefX = half[0] + p.lane;
+    // عند الطرفين يستدير ويعبر إلى النصف الآخر قبل أن يعود، بدل القفز إليه
+    if (p.z < dt.walkM + 2 && p.dir < 0) (p.dir = 1), (p.turning = true);
+    else if (p.z > dt.walkS - 2 && p.dir > 0) (p.dir = -1), (p.turning = true);
+    const crossing = p.turning && Math.abs(p.x - prefX) > 0.6;
+    if (!crossing) p.turning = false;
+    const av = avoidPlayer(p, px, pz, 0, p.dir);
+    const v = p.v * (green ? 1.6 : 1) * av.slow * (crossing ? 0.25 : 1);
+    const lateral = Math.max(-1.4, Math.min(1.4, (prefX - p.x) * (crossing ? 1.2 : 0.5)));
+    const [sx, sz] = separation(p, idx);
+    steer(p, lateral + sx + av.ax, p.dir * v + sz + av.az, delta);
+    // داخل امتداد الحاجز الأوسط يبقى كل حاجّ في نصفه
+    const byDivider = p.z > dt.divider.z0 - 0.5 && p.z < dt.divider.z1 + 0.5;
+    const side = p.x < dt.xc ? [67.4, 74.0] : [76.0, 82.8];
+    const lim = byDivider ? side : [67.4, 82.8];
+    p.x = Math.max(lim[0], Math.min(lim[1], p.x));
+    p.z = Math.max(dt.walkM + 0.5, Math.min(dt.walkS - 0.5, p.z));
+    constrain(p, px, pz);
+    p.yaw = p.heading ?? (p.dir > 0 ? Math.PI : 0);
+    p.raise = 0;
+  }
+
+  // ——— كل إطار: المحاكاة، ثم توزيع الحجاج على الهيئات الكاملة أو البطاقات ———
   const m4 = new Matrix4();
   const q = new Quaternion();
   const pos = new Vector3();
   const scl = new Vector3();
   const up = new Vector3(0, 1, 0);
-  const AVOID = 1.4; // يُبعَد الحاجّ عن اللاعب إن اقترب أقل من هذا (كما كان قبل هذه الطبقة)
   let time = 0;
-  function stepMataf(p, delta) {
-    const idx = Math.floor((((p.th % le) + le) % le) / le * 720) % 720;
-    const r = Math.max(p.r0, inner[idx]);
-    // عند خط الحجر الأسود: يتباطأ ويلتفت إلى الكعبة ويرفع يده اليمنى
-    const d = Math.abs(ll(p.th - we));
-    const target = d < 0.09 ? 1 - d / 0.09 : 0;
-    p.raise += (target - p.raise) * Math.min(1, delta * 6);
-    const v = p.v * (1 - 0.55 * p.raise);
-    p.th += (v / r) * delta; // عكس عقارب الساعة: الكعبة عن اليسار
-    p.x = Math.cos(p.th) * r;
-    p.z = -Math.sin(p.th) * r;
-    p.yaw = p.th + p.raise * 1.1; // يلتفت يسارًا نحو الكعبة
-    p.speed = v;
-  }
-  // (اسم المعامل delta لا dt: dt ثوابت المسعى في 02-layout.js)
-  function stepMasa(p, delta) {
-    // الرجال وحدهم يُسرعون بين العلمين الأخضرين
-    const green = p.z < dt.gA && p.z > dt.gB && p.kind === KIND.man && !p.child;
-    const v = p.v * (green ? 1.6 : 1);
-    p.z += p.dir * v * delta;
-    if (p.z < dt.walkM + 0.8) (p.dir = 1), (p.x = 76.4 + p.lane);
-    else if (p.z > dt.walkS - 0.8) (p.dir = -1), (p.x = 67.4 + p.lane);
-    p.yaw = p.dir > 0 ? Math.PI : 0;
-    p.speed = v;
-    p.raise = 0;
-  }
   c.update = (delta, player) => {
     time += delta;
+    delta = Math.min(delta, 0.05);
     const px = player ? player.x : 1e6;
     const pz = player ? player.z : 1e6;
     for (const M of meshes) M.n = 0;
     let nImp = 0;
     let near = 0;
+    // الشبكة من مواضع الإطار السابق
+    all.length = 0;
+    for (let i = 0; i < c.active.mataf; i++) all.push(mataf[i]);
+    for (let i = 0; i < c.active.masa; i++) all.push(masa[i]);
+    head.fill(-1);
+    all.forEach((p, i) => {
+      const k = cell(p.x, p.z);
+      next[i] = -1;
+      if (k >= 0) (next[i] = head[k]), (head[k] = i);
+    });
     const place = (p) => {
-      // تفادي اللاعب
-      let x = p.x;
-      let z = p.z;
-      const dx = x - px;
-      const dz = z - pz;
-      const d = Math.hypot(dx, dz);
-      if (d < AVOID && d > 1e-3) (x += (dx / d) * (AVOID - d)), (z += (dz / d) * (AVOID - d));
+      const dist = Math.hypot(p.x - px, p.z - pz);
       const amp = Math.min(1, p.speed / 1.2);
       p.ph += delta * (p.speed / 0.75) * Math.PI * (p.child ? 1.4 : 1);
       const bob = 0.03 * amp * Math.abs(Math.sin(p.ph));
-      const shade = c.shadeAt ? c.shadeAt(x, z) : 1;
+      const shade = c.shadeAt ? c.shadeAt(p.x, p.z) : 1;
       q.setFromAxisAngle(up, p.yaw);
-      pos.set(x, bob, z);
+      pos.set(p.x, bob, p.z);
       scl.set(p.s, p.s, p.s);
       m4.compose(pos, q, scl);
-      if (d < c.near) {
+      if (dist < c.near) {
         const M = byKind[p.area][p.kind];
         const i = M.n++;
         M.mesh.setMatrixAt(i, m4);
@@ -5913,8 +6315,8 @@ function createCrowds(scene) {
       }
     };
     if (c.visible) {
-      for (let i = 0; i < c.active.mataf; i++) stepMataf(mataf[i], delta), place(mataf[i]);
-      for (let i = 0; i < c.active.masa; i++) stepMasa(masa[i], delta), place(masa[i]);
+      all.forEach((p, i) => (p.area === "mataf" ? stepMataf(p, i, delta, px, pz) : stepMasa(p, i, delta, px, pz)));
+      all.forEach(place);
     }
     for (const M of meshes) {
       M.mesh.count = M.blob.count = M.n;
@@ -5925,7 +6327,231 @@ function createCrowds(scene) {
     c.stats.near = near;
     c.stats.far = nImp;
   };
+  c.space = SPACE;
   return c;
+}
+// تفاصيل المعالم (الطبقة 4 من docs/realism-plan.md). دوال فقط، يستدعيها 11-main.js بعد بناء المشهد.
+// كل شيء هندسة بالكود بلا ملفات نماذج. المتكرر InstancedMesh، والثابت مدموج بـ mergeGeometries (Bs)،
+// فتزيد أوامر الرسم قليلًا. وما يُستبدل من المشهد القديم يُخفى ولا يُحذف (الاختبار يقارن الأرقام).
+
+// قوس مدبّب عثماني لرواق واحد: جدار بعرض الرواق W وارتفاع H، فيه فتحة بعرض w تنحني من ارتفاع spring
+function archBayGeometry(W, H, depth, { open = 0.7, spring = 5 } = {}) {
+  const w = W * open;
+  const rho = 0.6 * w; // نصف قطر كل قوس من القوسين (قوس بمركزين)
+  const off = rho - w / 2; // بُعد مركز كل قوس عن المنتصف
+  const apex = Math.acos(-off / rho); // زاوية الرأس على القوس الأيسر
+  const s = new Es();
+  s.moveTo(-W / 2, 0);
+  s.lineTo(-w / 2, 0);
+  s.lineTo(-w / 2, spring);
+  const N = 7;
+  for (let i = 1; i <= N; i++) {
+    const a = Math.PI + ((apex - Math.PI) * i) / N; // القوس الأيسر: من نقطة الانطلاق إلى الرأس
+    s.lineTo(off + rho * Math.cos(a), spring + rho * Math.sin(a));
+  }
+  for (let i = 1; i <= N; i++) {
+    const a = Math.PI - apex + ((0 - (Math.PI - apex)) * i) / N; // القوس الأيمن: من الرأس إلى الانطلاق
+    s.lineTo(-off + rho * Math.cos(a), spring + rho * Math.sin(a));
+  }
+  s.lineTo(w / 2, 0);
+  s.lineTo(W / 2, 0);
+  s.lineTo(W / 2, H);
+  s.lineTo(-W / 2, H);
+  s.closePath();
+  const g = new Sr(s, { depth, bevelEnabled: false });
+  g.translate(0, 0, -depth / 2);
+  return g;
+}
+
+// عمود بقاعدة وتاج، بدل الأسطوانة الملساء
+function columnGeometry(height, rShaft, segs = 10) {
+  const base = new Re(rShaft * 1.5, rShaft * 1.6, 0.32, segs);
+  base.translate(0, 0.16, 0);
+  const shaftH = height - 0.32 - 0.45;
+  const shaft = new Re(rShaft * 0.85, rShaft, shaftH, segs, 1, true);
+  shaft.translate(0, 0.32 + shaftH / 2, 0);
+  const cap = new Re(rShaft * 1.5, rShaft * 0.85, 0.45, segs);
+  cap.translate(0, height - 0.225, 0);
+  const abacus = new Me(rShaft * 3.1, 0.14, rShaft * 3.1);
+  abacus.translate(0, height + 0.07, 0);
+  const parts = [base, shaft, cap, abacus];
+  // mergeGeometries يشترط الصفات نفسها في كل جزء
+  for (const g of parts) g.deleteAttribute("uv");
+  return Bs(parts);
+}
+
+function addLandmarkDetail(scene, world) {
+  const M = world.mats;
+  const added = []; // ما أُضيف، للاختبار
+  const add = (obj, parent = scene) => (parent.add(obj), added.push(obj), obj);
+  const glow = (world.glowMats = world.glowMats || []);
+
+  // ——— الكعبة ———
+  // الشاذروان: قاعدة رخامية مائلة حول الكعبة بدل الصندوق. أسطوانة بأربعة أضلاع مُدارة 45° = مربع مائل الجوانب
+  {
+    const g = new Re(Math.SQRT2 * 0.936, Math.SQRT2, 0.34, 4, 1);
+    g.rotateY(Math.PI / 4);
+    g.scale(Yt.lx / 2 + 0.45, 1, Yt.lz / 2 + 0.45);
+    const m = add(new Mesh(g, Se("#f1f0ea", { roughness: 0.38, flatShading: true })), world.kaabaGroup);
+    m.position.y = 0.17;
+    world.shadharwan.visible = false;
+  }
+  // الباب: لوح ذهبي بارز بإطار، والنقش (نسيج الباب القديم) على وجهه
+  {
+    const d = world.door;
+    const front = Yt.lx / 2;
+    const slab = new Me(0.12, 4.7, 2.7);
+    slab.translate(front + 0.06, d.position.y, d.position.z);
+    const frame = new Me(0.07, 5.05, 3.05);
+    frame.translate(front + 0.035, d.position.y, d.position.z);
+    const sill = new Me(0.3, 0.12, 3.3);
+    sill.translate(front + 0.15, d.position.y - 2.47, d.position.z);
+    for (const g of [slab, frame, sill]) g.deleteAttribute("uv");
+    add(new Mesh(Bs([slab, frame, sill]), M.gold), world.kaabaGroup);
+    d.position.x = front + 0.125; // النقش على وجه اللوح
+  }
+
+  // ——— قناديل على جدار الحِجر: نحاس، وزجاج يضيء ليلًا ———
+  {
+    const brass = [];
+    const glass = [];
+    const n = 9;
+    for (let i = 1; i <= n; i++) {
+      const t = je.t0 + ((Math.PI - 2 * je.t0) * i) / (n + 1);
+      const [x, z] = Qe(Math.cos(t) * je.a, -Yt.lz / 2 - Math.sin(t) * je.b);
+      const post = new Re(0.035, 0.045, 0.55, 6);
+      post.translate(x, je.h + 0.275, z);
+      const cap = new Bi(0.15, 0.18, 6);
+      cap.translate(x, je.h + 0.55 + 0.28 + 0.09, z);
+      const base = new Re(0.12, 0.1, 0.05, 6);
+      base.translate(x, je.h + 0.575, z);
+      brass.push(post, cap, base);
+      const lamp = new Re(0.1, 0.1, 0.28, 6);
+      lamp.translate(x, je.h + 0.55 + 0.14 + 0.025, z);
+      glass.push(lamp);
+    }
+    for (const g of [...brass, ...glass]) g.deleteAttribute("uv");
+    add(new Mesh(Bs(brass), M.gold));
+    const lanternMat = Se("#fff4d8", { roughness: 0.2 });
+    add(new Mesh(Bs(glass), lanternMat));
+    glow.push([lanternMat, "#ffd890", 1.6]);
+    world.lanternMat = lanternMat;
+  }
+
+  // ——— الأروقة: أقواس ثلاثية الأبعاد بدل نسيج الأقواس المسطح ———
+  {
+    const archMat = Se("#eee6d4", { roughness: 0.78 });
+    glow.push([archMat, "#ffcf8c", 0.22]);
+    world.archMat = archMat;
+    const m4 = new Matrix4();
+    for (const [r, depth] of [
+      [pe.arcIn, 0.8],
+      [pe.arcOut, 0.8],
+    ]) {
+      const W = (2 * Math.PI * r) / 60;
+      const arches = add(new InstancedMesh(archBayGeometry(W + 0.02, 9, depth), archMat, 60));
+      for (let i = 0; i < 60; i++) {
+        const a = ((i + 0.5) / 60) * le; // بين عمودين (الأعمدة عند i/60)
+        m4.makeRotationY(a).setPosition(Math.sin(a) * r, 0, Math.cos(a) * r);
+        arches.setMatrixAt(i, m4);
+      }
+    }
+    for (const w of world.arcadeWalls) w.visible = false;
+    glow.push([M.column, "#ffcf8c", 0.18]); // الأعمدة تضيء ليلًا مع الأقواس
+    // تيجان وقواعد للأعمدة: الهندسة تُستبدل، والمصفوفات كما هي
+    world.columns.geometry.dispose();
+    world.columns.geometry = columnGeometry(6.3, 0.4);
+    world.columns.computeBoundingSphere();
+    // طبول تحت القباب، والأهلّة ترتفع بقدرها
+    const drumH = 0.7;
+    const drum = new Re(2.12, 2.12, drumH, 16, 1, true);
+    drum.translate(0, drumH / 2, 0);
+    const dome = new SphereGeometry(2.05, 16, 8, 0, le, 0, Math.PI / 2);
+    dome.translate(0, drumH, 0);
+    for (const g of [drum, dome]) g.deleteAttribute("uv");
+    world.domes.geometry.dispose();
+    world.domes.geometry = Bs([drum, dome]);
+    world.domes.computeBoundingSphere();
+    for (let i = 0; i < world.finials.count; i++) {
+      world.finials.getMatrixAt(i, m4);
+      m4.elements[13] += drumH;
+      world.finials.setMatrixAt(i, m4);
+    }
+    world.finials.instanceMatrix.needsUpdate = true;
+  }
+
+  // ——— السور: أفاريز تُظهر طوابق التوسعة، وحافة في الأعلى ———
+  {
+    const q = (pe.gap[1] * Math.PI) / 180;
+    const J = le - ((pe.gap[1] - pe.gap[0]) * Math.PI) / 180;
+    const R = pe.outer;
+    const parts = [];
+    for (const [y, h, out] of [
+      [11.3, 0.45, 0.32],
+      [22.6, 0.45, 0.32],
+      [33.6, 0.9, 0.22],
+    ]) {
+      const band = new Re(R - out, R - out, h, 160, 1, true, q, J);
+      band.translate(0, y, 0);
+      parts.push(band);
+      for (const yy of [y - h / 2, y + h / 2]) {
+        const ring = new RingGeometry(R - out, R, 160, 1, q - Math.PI / 2, J);
+        ring.rotateX(-Math.PI / 2);
+        ring.translate(0, yy, 0);
+        parts.push(ring);
+      }
+    }
+    for (const g of parts) g.deleteAttribute("uv");
+    add(new Mesh(Bs(parts), Se("#e9e1cf", { side: qe, roughness: 0.8 })));
+  }
+
+  // ——— المآذن: درابزين حول الشرفتين ———
+  {
+    const parts = [];
+    for (const deg of [28, 62, 100, 140, 175, 210, 245, 285, 318]) {
+      const a = (deg * Math.PI) / 180;
+      const x = Math.cos(a) * 62;
+      const z = -Math.sin(a) * 62;
+      for (const [y, r] of [
+        [55.15, 2.85],
+        [78.0, 2.45],
+      ]) {
+        const band = new Re(r, r, 0.6, 20, 1, true);
+        band.translate(x, y + 0.3, z);
+        parts.push(band);
+      }
+    }
+    for (const g of parts) g.deleteAttribute("uv");
+    const railMat = Se("#f1ebde", { side: qe, roughness: 0.75 });
+    glow.push([railMat, "#ffd8a0", 0.32]);
+    add(new Mesh(Bs(parts), railMat));
+  }
+
+  // ——— المسعى: صف أعمدة ثانٍ على الجدار الشرقي، وعوارض في السقف ———
+  {
+    const old = world.masaColumns;
+    const zs = [];
+    const m4 = new Matrix4();
+    for (let i = 0; i < old.count; i++) old.getMatrixAt(i, m4), zs.push(m4.elements[14]);
+    const cols = add(new InstancedMesh(columnGeometry(7.4, 0.48), M.column, zs.length * 2));
+    zs.forEach((z, i) => {
+      cols.setMatrixAt(i, m4.makeTranslation(dt.x0, 0, z));
+      cols.setMatrixAt(zs.length + i, m4.makeTranslation(dt.x1 - 0.55, 0, z));
+    });
+    old.visible = false;
+    world.masaColumns = cols;
+    const beams = [];
+    for (let z = dt.zS + 1; z > dt.zM - 2; z -= 6) {
+      const b = new Me(dt.x1 - dt.x0, 0.45, 0.5);
+      b.translate(dt.xc, 10.75, z + 3);
+      b.deleteAttribute("uv");
+      beams.push(b);
+    }
+    add(new Mesh(Bs(beams), Se("#e7dfcd", { roughness: 0.85 })));
+  }
+
+  world.landmarkDetail = added;
+  return added;
 }
 var bd = new U(-0.62, 0.52, 0.34).normalize();
 function Se(i, t = {}) {
@@ -5997,8 +6623,9 @@ function Ed(i, t) {
     f = Se("#9aa2a8", { metalness: 0.35, roughness: 0.55 }),
     g = new Pt(new Oi(800, 64), Se("#cfc5b0", { roughness: 0.96 }));
   (g.rotation.x = -Math.PI / 2), i.add(g);
+  e.mats = { column: h, wall: d, gold: u, dome: f, floor: c }; // لتفاصيل المعالم والمواد (03-landmarks.js و01-materials.js)
   let v = new Pt(new Oi(pe.outer + 0.5, 128), c);
-  (v.rotation.x = -Math.PI / 2), (v.position.y = 0.01), i.add(v);
+  (v.rotation.x = -Math.PI / 2), (v.position.y = 0.01), i.add(v), (e.matafFloor = v);
   let m = new Pt(
     new Ve(Yt.lx + 8, Yt.lz + 8),
     new Le({ map: Mn(md(), { wrap: !1 }), transparent: !0, depthWrite: !1 }),
@@ -6007,14 +6634,14 @@ function Ed(i, t) {
   let p = new nn();
   (p.rotation.y = Yt.rot), i.add(p);
   let b = new Pt(new Me(Yt.lx + 0.6, 0.32, Yt.lz + 0.6), Se("#f4f3ef", { roughness: 0.35 }));
-  (b.position.y = 0.16), p.add(b);
+  (b.position.y = 0.16), p.add(b), (e.kaabaGroup = p), (e.shadharwan = b);
   let C = Mn(ud(), { repeat: [3, 3], aniso: n }),
-    y = Se("#ffffff", { map: C, roughness: 0.74, metalness: 0.06 }),
+    y = (e.kiswaMat = Se("#ffffff", { map: C, roughness: 0.74, metalness: 0.06 })),
     E = Se("#6c6c6a", { roughness: 0.9 }),
     w = new Pt(new Me(Yt.lx, Yt.h, Yt.lz), [y, y, E, E, y, y]);
   (w.position.y = Yt.h / 2), p.add(w);
   let D = Mn(dd(), { repeat: [1.5, 1], aniso: n }),
-    x = Se("#ffffff", { map: D, metalness: 0.55, roughness: 0.4, envMapIntensity: 1.3 }),
+    x = (e.bandMat = Se("#ffffff", { map: D, metalness: 0.55, roughness: 0.4, envMapIntensity: 1.3 })),
     M = new Le({ visible: !1 }),
     P = new Pt(new Me(Yt.lx + 0.05, 0.98, Yt.lz + 0.05), [x, x, M, M, x, x]);
   (P.position.y = Yt.h * 0.68), p.add(P);
@@ -6022,7 +6649,7 @@ function Ed(i, t) {
     new Ve(2.7, 4.7),
     Se("#ffffff", { map: Mn(fd(), { wrap: !1, aniso: n }), metalness: 0.45, roughness: 0.45 }),
   );
-  (I.rotation.y = Math.PI / 2), I.position.set(Yt.lx / 2 + 0.04, 4.15, Yt.lz / 2 - 2.95), p.add(I);
+  (I.rotation.y = Math.PI / 2), I.position.set(Yt.lx / 2 + 0.04, 4.15, Yt.lz / 2 - 2.95), p.add(I), (e.door = I);
   let A = new nn(),
     L = new Pt(
       new ni(0.26, 0.08, 12, 32),
@@ -6054,7 +6681,7 @@ function Ed(i, t) {
     let Tt = new Sr(N, { depth: it, bevelEnabled: !1, curveSegments: 1 });
     Tt.rotateX(-Math.PI / 2), Tt.translate(0, 0, -Yt.lz / 2);
     let R = new Pt(Tt, Se("#f6f5f0", { roughness: 0.4 }));
-    p.add(R);
+    p.add(R), (e.hijrWall = R);
     let _ = [];
     for (let k = 0; k <= St; k++) {
       let Y = ct + ((Math.PI - 2 * ct) * k) / St;
@@ -6133,7 +6760,7 @@ function Ed(i, t) {
     let it = new Pt(new Re(pe.arcOut, pe.arcOut, 9, 240, 1, !0), ct);
     it.position.y = 4.5;
     let N = new Pt(new ws(pe.arcIn - 0.3, pe.arcOut + 0.3, 120, 1), Se("#e7e0d0", { side: qe }));
-    (N.rotation.x = -Math.PI / 2), (N.position.y = 9), i.add(_t, it, N);
+    (N.rotation.x = -Math.PI / 2), (N.position.y = 9), i.add(_t, it, N), (e.arcadeWalls = [_t, it]);
     let St = new Re(0.34, 0.42, 6.3, 10);
     St.translate(0, 3.15, 0);
     let Tt = new kn(St, h, 120),
@@ -6155,7 +6782,7 @@ function Ed(i, t) {
         Y.makeTranslation(Math.sin(K) * nt, 11.4, Math.cos(K) * nt),
         k.setMatrixAt(lt, Y);
     }
-    i.add(Tt, _, k);
+    i.add(Tt, _, k), (e.columns = Tt), (e.domes = _), (e.finials = k);
   }
   {
     let q = (pe.gap[1] * Math.PI) / 180,
@@ -6165,7 +6792,7 @@ function Ed(i, t) {
         new Re(pe.outer, pe.outer, 34, 180, 1, !0, q, J),
         Se("#ffffff", { map: ct, side: qe, roughness: 0.85 }),
       );
-    (_t.position.y = 17), i.add(_t);
+    (_t.position.y = 17), i.add(_t), (e.outerWall = _t);
     for (let _ of pe.gap) {
       let z = (_ * Math.PI) / 180,
         k = new Pt(new Me(2.4, 34, 2.4), d);
@@ -6226,7 +6853,7 @@ function Ed(i, t) {
       J = (dt.zS + 5 + dt.zM - 5) / 2,
       ct = dt.x1 - dt.x0,
       _t = Mn(Gc({ seed: 21 }), { repeat: [ct / 2.4, q / 2.4], aniso: n }),
-      it = new Pt(new Ve(ct, q), Se("#ffffff", { map: _t, roughness: 0.3 }));
+      it = new Pt(new Ve(ct, q), (e.masaFloorMat = Se("#ffffff", { map: _t, roughness: 0.3 })));
     (it.rotation.x = -Math.PI / 2), it.position.set(dt.xc, 0.015, J);
     let N = new Pt(new Ve(ct, q), Se("#f1ebdf", { roughness: 0.9 }));
     (N.rotation.x = Math.PI / 2), N.position.set(dt.xc, 11, J), i.add(it, N);
@@ -6245,7 +6872,7 @@ function Ed(i, t) {
     let Y = [];
     for (let Ut = dt.zS + 2; Ut > dt.zM - 3; Ut -= 6)
       (Ut < dt.pass.z0 - 1 || Ut > dt.pass.z1 + 1) && Y.push(Ut);
-    let lt = new kn(k, h, Y.length),
+    let lt = (e.masaColumns = new kn(k, h, Y.length)),
       pt = new ue();
     Y.forEach((Ut, O) => {
       pt.makeTranslation(dt.x0, 0, Ut), lt.setMatrixAt(O, pt);
@@ -6867,11 +7494,11 @@ function createSnapLatch() {
 // المستوى يُختار تلقائيًا بحسب الوضع، ويُغيَّر من القائمة. ونسبة البكسل تتكيّف مع سرعة الإطارات:
 // تنخفض إن بقيت الإطارات بطيئة ثانيتين، وترتفع ببطء إن عادت سريعة. وفي النظارة يزيد التنقيط المركزي بدلها.
 var QUALITY_TIERS = {
-  low: { name: "منخفضة", maxPixelRatio: 1, minPixelRatio: 0.6, crowd: 0.55, crowdNear: 16, shadowRes: 768 },
-  medium: { name: "متوسطة", maxPixelRatio: 1.3, minPixelRatio: 0.75, crowd: 0.8, crowdNear: 22, shadowRes: 1024 },
-  high: { name: "عالية", maxPixelRatio: 1.6, minPixelRatio: 0.9, crowd: 1, crowdNear: 28, shadowRes: 1024 },
+  low: { name: "منخفضة", maxPixelRatio: 1, minPixelRatio: 0.6, crowd: 0.55, crowdNear: 16, shadowRes: 768, kiswaRes: 1024 },
+  medium: { name: "متوسطة", maxPixelRatio: 1.3, minPixelRatio: 0.75, crowd: 0.8, crowdNear: 22, shadowRes: 1024, kiswaRes: 1024 },
+  high: { name: "عالية", maxPixelRatio: 1.6, minPixelRatio: 0.9, crowd: 1, crowdNear: 28, shadowRes: 1024, kiswaRes: 2048 },
   // النظارة ترسم عينين بدقة عالية: حشود أقل، ونسبة البكسل لا تُستعمل (دقة الإطار من النظارة)
-  xr: { name: "النظارة", framebufferScale: 1, foveation: 0.5, crowd: 0.7, crowdNear: 18, shadowRes: 1024 },
+  xr: { name: "النظارة", framebufferScale: 1, foveation: 0.5, crowd: 0.7, crowdNear: 18, shadowRes: 1024, kiswaRes: 1024 },
 };
 // دقة نسيج الظل: 1024 تعني نحو 11 سم لكل بكسل على المطاف، وتكفي لظل ناعم. 2048 أبطأ خبزًا بكثير وأربعة أضعاف الذاكرة
 var QUALITY_TARGET_FPS = { flat: 55, xr: 68 }; // أقل قليلًا من 60 و72 حتى لا يتذبذب التكيّف
@@ -6909,7 +7536,9 @@ function createQuality({ renderer, world }) {
     world.setCrowdFraction(T.crowd);
     world.crowds.setNear(T.crowdNear); // أبعد من هذا: بطاقة مسطحة بدل الهيئة الكاملة
     slow = fast = 0;
-    if (changed && q.onTier) q.onTier(T);
+    // أول تطبيق يُبلّغ أيضًا: الأنسجة (الظل، والكسوة) تُبنى بدقة المستوى من البداية
+    if ((changed || !q.applied) && q.onTier) q.onTier(T);
+    q.applied = true;
   };
   q.setChoice = (choice, mode) => {
     q.choice = choice;
@@ -8964,6 +9593,8 @@ renderer.xr.setReferenceSpaceType("local-floor");
 var scene = new Di();
 var camera = new PerspectiveCamera(68, innerWidth / innerHeight, 0.05, 2200);
 var world = Ed(scene, renderer);
+addLandmarkDetail(scene, world); // الطبقة 4: تفاصيل المعالم
+var materials = upgradeMaterials(scene, world); // الطبقة 5: الأنسجة والمواد
 var hud = createHud({ camera });
 var panels = createPanels({ scene, camera, model: hud.model });
 hud.onChange = () => panels.markDirty();
@@ -8984,7 +9615,10 @@ var modes = createModes({ renderer, scene, camera, player, hud, panels, game, in
 // ——— الجودة وأوقات المشهد (الطبقتان 0 و1 من docs/realism-plan.md) ———
 var quality = createQuality({ renderer, world });
 var atmosphere = createAtmosphere({ scene, renderer, world });
-quality.onTier = (tier) => atmosphere.setResolution(tier.shadowRes);
+quality.onTier = (tier) => {
+  atmosphere.setResolution(tier.shadowRes);
+  materials.setKiswaRes(tier.kiswaRes);
+};
 modes.onChange = (mode) => quality.apply(mode);
 function markChoice(attr, value) {
   document.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute("aria-pressed", b.getAttribute(attr) === value ? "true" : "false"));
@@ -8998,6 +9632,24 @@ document.querySelectorAll("[data-quality]").forEach((b) =>
   }),
 );
 markChoice("data-quality", quality.choice);
+// كثافة الحشود: يختارها المستخدم، ولا تتجاوز ما يسمح به مستوى الجودة
+function setDensity(v) {
+  world.crowds.setDensity(v);
+  markChoice("data-density", String(v));
+  try {
+    localStorage.setItem("umrah.density", String(v));
+  } catch {}
+}
+document.querySelectorAll("[data-density]").forEach((b) => b.addEventListener("click", () => setDensity(+b.dataset.density)));
+setDensity(
+  (() => {
+    try {
+      const v = +localStorage.getItem("umrah.density");
+      if ([0.35, 0.65, 1].includes(v)) return v;
+    } catch {}
+    return 1;
+  })(),
+);
 atmosphere.setTime(
   (() => {
     const q = new URLSearchParams(location.search).get("time");
@@ -9227,7 +9879,7 @@ renderer.setAnimationLoop(() => {
   step(Math.min(realDt, 0.05));
   modes.render();
 });
-window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, step };
+window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, step };
 })();
 
 </script>
