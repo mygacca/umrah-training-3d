@@ -303,7 +303,7 @@ function createDriver(mode, page) {
   }
   // بدء التدريب من شاشة البداية: اختيار الوضع ثم «ابدأ»
   async function start() {
-    const sel = `[data-mode="${mode}"]`;
+    const sel = `button[data-mode="${mode}"]`; // لا body: عليه data-mode أيضًا، فيُلمس وسط الشاشة
     await page.waitForSelector(sel, { state: 'visible', timeout: 15000 });
     if (M.touch) await page.tap(sel), await page.tap('#startBtn');
     else await page.click(sel), await page.click('#startBtn');

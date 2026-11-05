@@ -38,7 +38,7 @@ var input = {
 };
 var vignette = createComfortVignette(camera);
 var reticle = createGazeReticle(camera);
-var modes = createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle });
+var modes = createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle, world });
 
 // ——— الجودة وأوقات المشهد (الطبقتان 0 و1 من docs/realism-plan.md) ———
 var quality = createQuality({ renderer, world });
@@ -90,7 +90,10 @@ atmosphere.setTime(
   })(),
 );
 
-hud.onCardBtn = () => (game.stage === "done" ? restart() : game.fastToSafa());
+// زر البطاقة: زر المنسك (انتقل إلى الصفا) إن وُجد، وإلا فزر «تعلّم سريع»
+var fast = createFastLearning({ game, hud, player, world });
+hud.extraBtn = fast.label;
+hud.onCardBtn = () => (game.stage === "done" ? restart() : hud.model.gameBtn ? game.fastToSafa() : fast.run());
 Promise.race([
   Promise.all([
     document.fonts.load('600 40px "Noto Kufi Arabic"'),
@@ -125,13 +128,13 @@ var chosenMode = (() => {
 })();
 function chooseMode(mode) {
   chosenMode = mode;
-  document.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-checked", b.dataset.mode === mode ? "true" : "false"));
+  document.querySelectorAll("button[data-mode]").forEach((b) => b.setAttribute("aria-checked", b.dataset.mode === mode ? "true" : "false"));
   document.querySelectorAll(".mode-note").forEach((n) => (n.hidden = n.dataset.for !== mode));
   try {
     localStorage.setItem("umrah.mode", mode);
   } catch {}
 }
-document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => chooseMode(b.dataset.mode)));
+document.querySelectorAll("button[data-mode]").forEach((b) => b.addEventListener("click", () => chooseMode(b.dataset.mode)));
 chooseMode(chosenMode);
 modes.xrSupported().then((ok) => {
   document.querySelectorAll('[data-mode="xr"], #menuVr').forEach((b) => (b.hidden = !ok));
@@ -155,6 +158,29 @@ bindOpt("voice", (on) => hud.setVoice(on));
 bindOpt("labels", (on) => world.setLabels(on));
 bindOpt("crowd", (on) => world.setCrowd(on));
 bindOpt("comfort", (on) => modes.setComfort(on));
+// الجوال: النظر بتحريك الجوال (اختياري، والسحب هو الافتراضي)، والمشي الموجّه (مفعّل افتراضيًا). يُحفظان
+function savedFlag(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === "1" || v === "0") return v === "1";
+  } catch {}
+  return fallback;
+}
+function saveFlag(key, on) {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {}
+}
+modes.gyro = savedFlag("umrah.gyro", false);
+modes.setGuide(savedFlag("umrah.guide", true));
+syncOpt("gyro", modes.gyro);
+syncOpt("guide", modes.guide);
+bindOpt("gyro", (on) => (modes.setGyro(on), saveFlag("umrah.gyro", on)));
+bindOpt("guide", (on) => (modes.setGuide(on), saveFlag("umrah.guide", on)));
+// «تعلّم سريع» (09-fast.js): زر في البطاقة يمشي الأشواط والمسافات الطويلة
+fast.enabled = savedFlag("umrah.fast", false);
+syncOpt("fast", fast.enabled);
+bindOpt("fast", (on) => ((fast.enabled = on), saveFlag("umrah.fast", on), hud.refreshCardBtn()));
 var refreshVoice = () => {
   const ok = hud.voiceAvailable();
   document.querySelectorAll('input[data-opt="voice"]').forEach((e) => {
@@ -171,7 +197,7 @@ if ("speechSynthesis" in window) speechSynthesis.addEventListener?.("voiceschang
 
 // ——— البدء ———
 var startHints = {
-  mobile: "حرّك الجوال لتلتفت، وامشِ بالعصا تحت إبهامك الأيسر، والمس الزر الذهبي للمنسك.",
+  mobile: "ضع إبهامك الأيسر أسفل الشاشة لتمشي، واسحب بالأيمن لتلتفت، والمس الزر الذهبي للمنسك.",
   cardboard: "انظر إلى زر ثانية واحدة لتختاره، والمس الشاشة لتمشي أو تقف.",
   desktop: "امشِ بالأسهم أو بمفاتيح WASD، والتفت بسحب الفأرة، والمسافة للمنسك.",
   xr: "",
@@ -189,7 +215,10 @@ function beginTraining() {
   const hint = startHints[modes.mode];
   if (fromIntro && hint) setTimeout(() => hud.toast(hint, "info", 5), 900);
 }
+// بعد إغلاق نافذة بالنقر يبقى التركيز على زرها المخفي لحظة، فتضيع أول ضغطة مسافة (المسافة على زر تخصّه)
+var dropFocus = () => document.activeElement && document.activeElement !== document.body && document.activeElement.blur?.();
 function restart() {
+  dropFocus();
   $id("summary").hidden = true;
   $id("menu").hidden = true;
   player.enabled = true;
@@ -233,6 +262,11 @@ $id("jogBtn").addEventListener("click", () => {
   player.jogToggle = !player.jogToggle;
   hud.setJog(player.jogToggle);
 });
+$id("autoWalkBtn").addEventListener("click", () => modes.setAutoWalk(!modes.autoWalk));
+modes.onAutoWalk = (on) => {
+  $id("autoWalkBtn").classList.toggle("on", on);
+  $id("autoWalkBtn").setAttribute("aria-pressed", on ? "true" : "false");
+};
 $id("turnLBtn").addEventListener("click", () => player.snapTurn(1));
 $id("turnRBtn").addEventListener("click", () => player.snapTurn(-1));
 $id("menuBtn").addEventListener("click", () => {
@@ -240,6 +274,7 @@ $id("menuBtn").addEventListener("click", () => {
   player.enabled = false;
 });
 $id("menuClose").addEventListener("click", () => {
+  dropFocus();
   $id("menu").hidden = true;
   player.enabled = true;
 });
@@ -271,7 +306,7 @@ game.onFinish = (r) => {
   hud.setAction("أعِد التدريب", true);
 };
 $id("againBtn").addEventListener("click", restart);
-$id("freeBtn").addEventListener("click", () => ($id("summary").hidden = true));
+$id("freeBtn").addEventListener("click", () => (dropFocus(), ($id("summary").hidden = true)));
 addEventListener("resize", () => modes.resize());
 
 // ——— حلقة الإطار ———
@@ -307,4 +342,4 @@ renderer.setAnimationLoop(() => {
   step(Math.min(realDt, 0.05));
   modes.render();
 });
-window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, step };
+window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, fast, step };

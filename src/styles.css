@@ -44,12 +44,14 @@ button:disabled { cursor: default; }
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: flex-start;
   background: linear-gradient(to top, rgba(7, 26, 22, 0.95) 0%, rgba(7, 26, 22, 0.72) 42%, rgba(7, 26, 22, 0) 72%);
   overflow-y: auto;
 }
+/* في الأسفل بهامش تلقائي لا بـ align-items: flex-end: إن طالت اللوحة عن الشاشة (جوال أفقي) يبقى أعلاها قابلًا للتمرير */
 .intro-panel {
+  margin-top: auto;
   width: min(470px, 100%);
   padding: 24px 22px calc(22px + var(--safe-b));
 }
@@ -116,8 +118,8 @@ button:disabled { cursor: default; }
 .fine { font: 400 11.5px / 1.8 var(--kufi); color: var(--faint); margin: 10px 0 0; max-width: 46ch; }
 
 @media (min-width: 900px) {
-  #intro { align-items: center; background: linear-gradient(to left, rgba(7, 26, 22, 0.94) 0%, rgba(7, 26, 22, 0.7) 34%, rgba(7, 26, 22, 0) 60%); }
-  .intro-panel { padding: 40px 56px; }
+  #intro { background: linear-gradient(to left, rgba(7, 26, 22, 0.94) 0%, rgba(7, 26, 22, 0.7) 34%, rgba(7, 26, 22, 0) 60%); }
+  .intro-panel { padding: 40px 56px; margin-block: auto; }
 }
 
 /* ---------- HUD ---------- */
@@ -151,8 +153,10 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   border: 1.5px solid rgba(246, 241, 228, 0.38);
   background: rgba(10, 36, 31, 0.42);
   touch-action: none;
+  opacity: 0.6;
 }
-#joy.active { border-color: var(--gold); }
+/* العصا عائمة: تنتقل إلى حيث يضع اللاعب إبهامه (05-input.js)، وتعود إلى هنا حين يرفعه */
+#joy.active { border-color: var(--gold); opacity: 1; }
 #knob {
   position: absolute;
   left: 50%;
@@ -187,7 +191,7 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   color: var(--ivory);
   font: 600 20px/1 var(--kufi);
 }
-#jogBtn {
+#jogBtn, #autoWalkBtn {
   height: 44px;
   padding: 0 18px;
   border-radius: 22px;
@@ -196,7 +200,7 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   color: var(--ivory);
   font: 600 14px var(--kufi);
 }
-#jogBtn.on { background: var(--ivory); color: var(--deep); border-color: var(--ivory); }
+#jogBtn.on, #autoWalkBtn.on { background: var(--ivory); color: var(--deep); border-color: var(--ivory); }
 
 /* علبة VR: خط بين الصورتين يساعد على وضع الجوال في وسط العلبة، وزر خروج */
 #cardboard, #cbExit { display: none; }
@@ -219,6 +223,7 @@ body[data-mode="cardboard"] #cbExit {
 body[data-mode="cardboard"] #menuBtn { display: none; }
 
 .mode-pick { flex-wrap: wrap; }
+.mode-note .opts { margin: 10px 0 0; }
 .modes button { min-width: 0; padding: 0 12px; }
 
 /* ---------- sheets ---------- */

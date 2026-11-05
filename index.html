@@ -52,12 +52,14 @@ button:disabled { cursor: default; }
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: flex-start;
   background: linear-gradient(to top, rgba(7, 26, 22, 0.95) 0%, rgba(7, 26, 22, 0.72) 42%, rgba(7, 26, 22, 0) 72%);
   overflow-y: auto;
 }
+/* في الأسفل بهامش تلقائي لا بـ align-items: flex-end: إن طالت اللوحة عن الشاشة (جوال أفقي) يبقى أعلاها قابلًا للتمرير */
 .intro-panel {
+  margin-top: auto;
   width: min(470px, 100%);
   padding: 24px 22px calc(22px + var(--safe-b));
 }
@@ -124,8 +126,8 @@ button:disabled { cursor: default; }
 .fine { font: 400 11.5px / 1.8 var(--kufi); color: var(--faint); margin: 10px 0 0; max-width: 46ch; }
 
 @media (min-width: 900px) {
-  #intro { align-items: center; background: linear-gradient(to left, rgba(7, 26, 22, 0.94) 0%, rgba(7, 26, 22, 0.7) 34%, rgba(7, 26, 22, 0) 60%); }
-  .intro-panel { padding: 40px 56px; }
+  #intro { background: linear-gradient(to left, rgba(7, 26, 22, 0.94) 0%, rgba(7, 26, 22, 0.7) 34%, rgba(7, 26, 22, 0) 60%); }
+  .intro-panel { padding: 40px 56px; margin-block: auto; }
 }
 
 /* ---------- HUD ---------- */
@@ -159,8 +161,10 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   border: 1.5px solid rgba(246, 241, 228, 0.38);
   background: rgba(10, 36, 31, 0.42);
   touch-action: none;
+  opacity: 0.6;
 }
-#joy.active { border-color: var(--gold); }
+/* العصا عائمة: تنتقل إلى حيث يضع اللاعب إبهامه (05-input.js)، وتعود إلى هنا حين يرفعه */
+#joy.active { border-color: var(--gold); opacity: 1; }
 #knob {
   position: absolute;
   left: 50%;
@@ -195,7 +199,7 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   color: var(--ivory);
   font: 600 20px/1 var(--kufi);
 }
-#jogBtn {
+#jogBtn, #autoWalkBtn {
   height: 44px;
   padding: 0 18px;
   border-radius: 22px;
@@ -204,7 +208,7 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   color: var(--ivory);
   font: 600 14px var(--kufi);
 }
-#jogBtn.on { background: var(--ivory); color: var(--deep); border-color: var(--ivory); }
+#jogBtn.on, #autoWalkBtn.on { background: var(--ivory); color: var(--deep); border-color: var(--ivory); }
 
 /* علبة VR: خط بين الصورتين يساعد على وضع الجوال في وسط العلبة، وزر خروج */
 #cardboard, #cbExit { display: none; }
@@ -227,6 +231,7 @@ body[data-mode="cardboard"] #cbExit {
 body[data-mode="cardboard"] #menuBtn { display: none; }
 
 .mode-pick { flex-wrap: wrap; }
+.mode-note .opts { margin: 10px 0 0; }
 .modes button { min-width: 0; padding: 0 12px; }
 
 /* ---------- sheets ---------- */
@@ -320,7 +325,14 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
         <button type="button" role="radio" aria-checked="false" data-mode="xr" hidden>النظارة</button>
       </div>
     </div>
-    <p class="fine mode-note" data-for="mobile" hidden>حرّك الجوال لتلتفت، وامشِ بالعصا على الشاشة.</p>
+    <div class="mode-note" data-for="mobile" hidden>
+      <p class="fine">ضع إبهامك الأيسر في أي مكان أسفل يسار الشاشة لتمشي، واسحب على الشاشة لتلتفت.</p>
+      <div class="opts">
+        <label class="sw"><input type="checkbox" data-opt="guide" checked><span class="track"></span><span>المشي الموجّه</span></label>
+        <label class="sw"><input type="checkbox" data-opt="gyro"><span class="track"></span><span>النظر بتحريك الجوال</span></label>
+      </div>
+      <p class="fine">المشي الموجّه: ادفع العصا إلى الأمام فتمشي على مسار المنسك وتلتفت معه.</p>
+    </div>
     <p class="fine mode-note" data-for="cardboard" hidden>بعد «ابدأ» ضع الجوال أفقيًا في العلبة. اختر بالنظر إلى الزر ثانية واحدة، أو بزر العلبة، أو بيد تحكم بلوتوث.</p>
     <p class="fine mode-note" data-for="desktop" hidden>الأسهم أو WASD للمشي، وسحب الفأرة للالتفات، والمسافة للمنسك.</p>
     <p class="fine mode-note" data-for="xr" hidden>العصا اليسرى للمشي، واليمنى للدوران، والزناد للاختيار.</p>
@@ -333,7 +345,9 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       <label class="sw"><input type="checkbox" data-opt="voice" checked><span class="track"></span><span>الإرشاد الصوتي</span></label>
       <label class="sw"><input type="checkbox" data-opt="labels" checked><span class="track"></span><span>أسماء المعالم</span></label>
       <label class="sw"><input type="checkbox" data-opt="comfort"><span class="track"></span><span>حركة مريحة</span></label>
+      <label class="sw"><input type="checkbox" data-opt="fast"><span class="track"></span><span>تعلّم سريع</span></label>
     </div>
+    <p class="fine">تعلّم سريع: زر في البطاقة يمشي عنك الأشواط والمسافات الطويلة، وتبقى أزرار المناسك عليك.</p>
     <p class="note voice-missing" hidden>لا يوجد صوت عربي على هذا الجهاز، فالإرشاد مكتوب فقط.</p>
     <p id="vrNote" class="fine">وضع النظارة يعمل حين تُفتح الصفحة من متصفح النظارة عبر رابط https.</p>
     <p class="fine">نموذج أولي: المسافات مصغّرة، والنصوص الشرعية مختصرة للعرض وتحتاج مراجعة مختص قبل النشر.</p>
@@ -367,6 +381,7 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       <button type="button" id="turnRBtn" aria-label="دُر يمينًا">⟳</button>
       <button type="button" id="turnLBtn" aria-label="دُر يسارًا">⟲</button>
     </div>
+    <button type="button" id="autoWalkBtn" aria-pressed="false">مشي مستمر</button>
     <button type="button" id="jogBtn" aria-pressed="false">هرولة</button>
   </div>
 </div>
@@ -382,6 +397,9 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       <label class="sw"><input type="checkbox" data-opt="labels" checked><span class="track"></span><span>أسماء المعالم</span></label>
       <label class="sw"><input type="checkbox" data-opt="crowd" checked><span class="track"></span><span>الحشود</span></label>
       <label class="sw"><input type="checkbox" data-opt="comfort"><span class="track"></span><span>حركة مريحة</span></label>
+      <label class="sw"><input type="checkbox" data-opt="fast"><span class="track"></span><span>تعلّم سريع</span></label>
+      <label class="sw mobile-only"><input type="checkbox" data-opt="guide" checked><span class="track"></span><span>المشي الموجّه</span></label>
+      <label class="sw mobile-only"><input type="checkbox" data-opt="gyro"><span class="track"></span><span>النظر بتحريك الجوال</span></label>
     </div>
     <h3>وقت المشهد</h3>
     <div class="jumps choices">
@@ -419,8 +437,9 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
     <button type="button" id="menuVr" class="secondary wide" hidden>ادخل بنظارة الواقع الافتراضي</button>
     <h3>التحكّم</h3>
     <dl class="keys mobile-only">
-      <div><dt>الالتفات</dt><dd>حرّك الجوال، أو اسحب على الشاشة، أو زرّا الدوران</dd></div>
-      <div><dt>المشي</dt><dd>العصا تحت الإبهام الأيسر</dd></div>
+      <div><dt>الالتفات</dt><dd>اسحب على الشاشة، أو زرّا الدوران، أو حرّك الجوال إن فعّلت «النظر بتحريك الجوال»</dd></div>
+      <div><dt>المشي</dt><dd>ضع إبهامك الأيسر في أي مكان أسفل يسار الشاشة واسحبه. ومع «المشي الموجّه» يتبع المشي مسار المنسك وتلتفت الكاميرا معه</dd></div>
+      <div><dt>مشي مستمر</dt><dd>يمشي وحده حتى ما يحتاج منسكًا، ويقف بالزر نفسه أو بسحب العصا إلى الخلف</dd></div>
       <div><dt>المنسك</dt><dd>المس الزر الذهبي حين يضيء</dd></div>
       <div><dt>الهرولة</dt><dd>زر الهرولة، ويبقى مفعّلًا حتى تضغطه ثانية</dd></div>
     </dl>
@@ -432,6 +451,7 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       <div><dt>القائمة</dt><dd><bdi>Esc</bdi></dd></div>
     </dl>
     <dl class="keys">
+      <div><dt>تعلّم سريع</dt><dd>زر في البطاقة: «امشِ إلى خط البداية»، و«أكمل الشوط» في الطواف والسعي، و«امشِ إلى خلف المقام». يمشي عنك ويُحتسب الشوط، ويبقى عليك التكبير والدعاء والصلاة. وللرَّمَل والإسراع بين العلمين فعّل الهرولة قبل الزر</dd></div>
       <div><dt>علبة VR</dt><dd>النظر إلى زر ثانية واحدة يختاره، ولمس الشاشة (زر العلبة) يختار أو يبدأ المشي ويوقفه. يد التحكم: العصا اليسرى للمشي، واليمنى أو الكتفان للدوران، وA للاختيار، وB للمشي</dd></div>
       <div><dt>في النظارة</dt><dd>العصا اليسرى للمشي، واليمنى للدوران على دفعات، والزناد الأيمن للاختيار، والأيسر للهرولة</dd></div>
     </dl>
@@ -7298,6 +7318,12 @@ function jc(i) {
         "راجعي التنبيهات أعلاه، وأعيدي التدريب قبل عمرتك الحقيقية.",
       ),
     },
+    // «تعلّم سريع» (09-fast.js): زر في البطاقة يمشي المقطع الطويل. وأزرار المناسك نفسها تبقى
+    fast: {
+      toStart: t("امشِ إلى خط البداية", "امشي إلى خط البداية"),
+      lap: t("أكمل الشوط", "أكملي الشوط"),
+      toMaqam: t("امشِ إلى خلف المقام", "امشي إلى خلف المقام"),
+    },
   };
 }
 // مصادر الإدخال. لا يعرف أيٌّ منها شيئًا عن اللعبة؛ كل وضع في 10-modes.js يقرأ منها ما يلزمه في كل إطار.
@@ -7324,9 +7350,11 @@ function createKeyboard() {
 // السحب على اللوحة للالتفات، واللمسة أو النقرة القصيرة.
 function createPointer(canvas) {
   const active = new Map();
-  const p = { enabled: false, dragYaw: 0, dragPitch: 0, onTap: null };
+  // claim(e): يأخذ اللمسة غيرُ السحب (عصا المشي العائمة في الجوال) إن أعاد true
+  const p = { enabled: false, dragYaw: 0, dragPitch: 0, onTap: null, claim: null };
   canvas.addEventListener("pointerdown", (e) => {
     if (!p.enabled) return;
+    if (p.claim && p.claim(e)) return;
     active.set(e.pointerId, { x: e.clientX, y: e.clientY, t0: performance.now(), touch: e.pointerType !== "mouse", moved: 0 });
     canvas.setPointerCapture?.(e.pointerId);
   });
@@ -7352,7 +7380,8 @@ function createPointer(canvas) {
   canvas.addEventListener("pointercancel", (e) => end(e, false));
   // يمنع «النقر الشبحي» بعد اللمس: لولاه لوقع النقر على ما يظهر تحت الإصبع بعد الضغطة
   // (مثل نافذة الملخص التي يفتحها لمس الزر الذهبي)
-  canvas.addEventListener("touchend", (e) => e.preventDefault(), { passive: false });
+  // وبعد السحب لا يُلغى touchend (cancelable=false)، ومحاولة إلغائه خطأ في وحدة التحكم؛ ولا نقر بعد السحب أصلًا
+  canvas.addEventListener("touchend", (e) => e.cancelable && e.preventDefault(), { passive: false });
   p.takeDrag = () => {
     const d = [p.dragYaw, p.dragPitch];
     p.dragYaw = p.dragPitch = 0;
@@ -7361,38 +7390,47 @@ function createPointer(canvas) {
   return p;
 }
 
-// عصا المشي على الشاشة تحت الإبهام الأيسر.
+// عصا المشي تحت الإبهام الأيسر. عائمة: begin(e) يضع مركزها حيث لمس الإبهام (10-modes.js يقرّر أي لمسة لها)،
+// وتعود إلى مكانها أسفل اليسار حين يُرفع. فلا يحتاج اللاعب أن يصيب العصا بدقة.
 function createJoystick(el, knob) {
-  const j = { enabled: false, x: 0, y: 0, id: null };
+  const j = { enabled: false, x: 0, y: 0, id: null, cx: 0, cy: 0 };
   const R = 46;
   const show = (x, y) => (knob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`);
   const set = (e) => {
-    const r = el.getBoundingClientRect();
-    let x = e.clientX - (r.left + r.width / 2);
-    let y = e.clientY - (r.top + r.height / 2);
+    let x = e.clientX - j.cx;
+    let y = e.clientY - j.cy;
     const d = Math.hypot(x, y);
     if (d > R) (x = (x / d) * R), (y = (y / d) * R);
     show(x, y);
     j.x = x / R;
     j.y = -y / R;
   };
-  el.addEventListener("pointerdown", (e) => {
-    if (!j.enabled) return;
+  j.begin = (e) => {
+    if (!j.enabled || j.id !== null) return false;
     j.id = e.pointerId;
-    el.setPointerCapture?.(e.pointerId);
+    const half = el.getBoundingClientRect().width / 2;
+    j.cx = Math.max(half + 4, Math.min(innerWidth - half - 4, e.clientX));
+    j.cy = Math.max(half + 4, Math.min(innerHeight - half - 4, e.clientY));
+    el.style.left = `${j.cx - half}px`;
+    el.style.top = `${j.cy - half}px`;
+    el.style.bottom = "auto";
     el.classList.add("active");
     set(e);
-  });
-  el.addEventListener("pointermove", (e) => e.pointerId === j.id && set(e));
+    return true;
+  };
+  el.addEventListener("pointerdown", (e) => j.begin(e) && el.setPointerCapture?.(e.pointerId));
+  // على النافذة: الإصبع يبدأ على اللوحة ثم يتحرك فوق العصا نفسها
+  addEventListener("pointermove", (e) => e.pointerId === j.id && set(e));
   const end = (e) => {
     if (e.pointerId !== j.id) return;
     j.id = null;
     j.x = j.y = 0;
     show(0, 0);
     el.classList.remove("active");
+    el.style.left = el.style.top = el.style.bottom = "";
   };
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", end);
+  addEventListener("pointerup", end);
+  addEventListener("pointercancel", end);
   return j;
 }
 
@@ -7596,6 +7634,107 @@ function createQuality({ renderer, world }) {
   };
   return q;
 }
+// المشي الموجّه في الجوال: اتجاه مسار المنسك من موضع اللاعب. يستعمله 10-modes.js حين يدفع اللاعب العصا إلى الأمام،
+// فيمشي على المسار ويلتفت معه، ولا يحتاج أن يدير الجوال ولا أن يصوّب بدقة.
+//
+//   الطواف          حول الكعبة على البعد نفسه منها، ويبتعد حول الحِجر ثم يعود. والكعبة عن اليسار،
+//                   إلا لمن ينظر عكس الاتجاه بوضوح: فيمشي عكسه ويُنبَّه، كما لو مشى بلا توجيه
+//   إلى الهدف       بداية الطواف، والمقام، والصفا: إلى الهدف، وحول الكعبة إن كانت في الطريق، ومن الممر إلى المسعى
+//   السعي           إلى الصفا أو المروة بحسب الشوط. الذاهب إلى المروة غربي الحاجز، والعائد شرقيه (كالحشود)
+//   غير ذلك         لا توجيه: المشي في اتجاه النظر
+var GUIDE_LOOKAHEAD = 2.5; // متر: نقطة المسار التي يتجه إليها اللاعب
+var GUIDE_STAGES = { toStart: 1, toMaqam: 1, toSafa: 1, sai: 1 };
+
+function createRouteGuide({ game, hud, laneAt }) {
+  const g = { sense: 0, rHold: 0 };
+  // أقرب ما يقترب المسار من الكعبة في كل زاوية: حدّ الحشود المنعَّم (03-crowds.js)، وأبعد عند الحِجر
+  const keepOut = (phi) => laneAt(phi) + 0.6;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const unit = (dx, dz) => {
+    const d = Math.hypot(dx, dz);
+    return d < 1e-6 ? null : [dx / d, dz / d];
+  };
+
+  // نقطة أمام اللاعب على دائرة حول الكعبة: sense = 1 عكس عقارب الساعة (الكعبة عن اليسار)
+  function around(x, z, sense, r) {
+    const phi = Math.atan2(-z, x);
+    const a = phi + (sense * GUIDE_LOOKAHEAD) / Math.max(4, Math.hypot(x, z));
+    const rt = Math.max(r, keepOut(a));
+    return unit(Math.cos(a) * rt - x, -Math.sin(a) * rt - z);
+  }
+  // في خط مستقيم إلى نقطة، أو حولها إن كانت الكعبة أو الحِجر بين اللاعب والنقطة
+  function direct(x, z, tx, tz) {
+    const dx = tx - x;
+    const dz = tz - z;
+    const len2 = dx * dx + dz * dz;
+    const t = len2 > 0 ? -(x * dx + z * dz) / len2 : 0;
+    if (t > 0.02 && t < 0.98) {
+      const cx = x + dx * t;
+      const cz = z + dz * t;
+      if (Math.hypot(cx, cz) < keepOut(Math.atan2(-cz, cx)) + 0.5) {
+        const turn = ll(Math.atan2(-tz, tx) - Math.atan2(-z, x));
+        return around(x, z, turn >= 0 ? 1 : -1, Math.hypot(x, z));
+      }
+    }
+    return unit(dx, dz);
+  }
+  // داخل المسعى إلى طرف: على طوله، والحاجز الأوسط بين الذاهب والعائد
+  function alongMasa(x, z, tx, tz) {
+    const dz = tz - z;
+    const s = Math.sign(dz);
+    const D = dt.divider;
+    let lane = x;
+    if (z > D.z0 - 4 && z < D.z1 + 4 && Math.abs(x - dt.xc) < 2) lane = dt.xc + (s < 0 ? -2.5 : 2.5);
+    lane = clamp(lane, dt.x0 + 1.5, dt.x1 - 1.5);
+    return unit(clamp((lane - x) * 0.5, -0.6, 0.6), s);
+  }
+  const inMasa = (x, z) => x >= dt.x0 + 0.7 && z <= dt.walkS && z >= dt.walkM;
+  const inPass = (x, z) => x >= dt.pass.x0 - 1 && x < dt.x0 + 0.7 && z >= dt.pass.z0 - 1 && z <= dt.pass.z1 + 1;
+  // إلى الهدف، ومن المطاف إلى المسعى (أو العكس) عبر الممر
+  function toTarget(x, z, tx, tz) {
+    if (Math.hypot(tx - x, tz - z) < 0.8) return null; // وصل
+    const P = dt.pass;
+    const passZ = clamp(z, P.z0 + 2, P.z1 - 2);
+    const targetInMasa = tx >= dt.x0;
+    if (targetInMasa) {
+      if (inMasa(x, z)) return Math.abs(tz - z) < 0.8 ? null : alongMasa(x, z, tx, tz);
+      if (inPass(x, z)) return direct(x, z, dt.x0 + 3, passZ);
+      return direct(x, z, P.x0 + 2, passZ);
+    }
+    if (inMasa(x, z)) {
+      // من شرقي الحاجز: حول طرفه عند الصفا أولًا، فالممر غربيه
+      const D = dt.divider;
+      if (x > D.x0 - 0.3 && z < D.z1 + 1.5) return direct(x, z, dt.xc + 1.5, D.z1 + 2.5);
+      return direct(x, z, dt.x0 + 0.5, passZ);
+    }
+    if (inPass(x, z)) return direct(x, z, P.x0 - 3, passZ);
+    return direct(x, z, tx, tz);
+  }
+
+  // (x, z) موضع اللاعب، و(hx, hz) اتجاه نظره الأفقي. fresh: بداية دفعة جديدة للعصا. side: المشي الجانبي.
+  // يعيد [dx, dz] اتجاه المشي، أو null للمشي في اتجاه النظر
+  g.direction = (x, z, hx, hz, fresh, side) => {
+    const stage = game.stage;
+    if (stage === "tawaf") {
+      const r = Math.hypot(x, z);
+      const phi = Math.atan2(-z, x);
+      if (fresh || !g.sense) {
+        // المماس عكس عقارب الساعة (-sin φ, -cos φ): من ينظر عكسه بوضوح يمشي عكسه
+        g.sense = hx * -Math.sin(phi) + hz * -Math.cos(phi) < -0.5 ? -1 : 1;
+        g.rHold = r;
+      }
+      if (Math.abs(side) > 0.15) g.rHold = r; // المشي الجانبي يقرّب من الكعبة أو يبعد عنها
+      return around(x, z, g.sense, g.rHold);
+    }
+    const T = hud.model.target;
+    if (!GUIDE_STAGES[stage] || !T) return null;
+    return toTarget(x, z, T[0], T[1]);
+  };
+  // بعد الوصول إلى ما يحتاج منسكًا: إلى أين ينظر اللاعب (الحجر الأسود عند بداية الطواف، والكعبة خلف المقام)
+  g.arrivalFace = (stage) => (stage === "toStart" ? Ln.black : stage === "toMaqam" ? [0, 0] : null);
+  g.reset = () => (g.sense = 0);
+  return g;
+}
 // اللاعب: المنصّة (rig) والكاميرا، والمشي مع التصادم، والانتقال، والدوران على دفعات.
 // لا يقرأ الإدخال بنفسه: الوضع (10-modes.js) يضبط النظر ويمرّر أمر المشي إلى update.
 var EYE_HEIGHT = 1.62;
@@ -7722,7 +7861,7 @@ function createPlayer({ scene, camera, renderer }) {
     lastValid = null;
   };
 
-  // cmd: { forward, strafe } بين -1 و1
+  // cmd: { forward, strafe } بين -1 و1، و dir: [dx, dz] اتجاه «الأمام» إن لم يكن اتجاه النظر (المشي الموجّه في 06-guide.js)
   p.update = (dt, cmd = {}) => {
     applyLook();
     rig.updateMatrixWorld(true);
@@ -7734,7 +7873,8 @@ function createPlayer({ scene, camera, renderer }) {
     if (len > 1) (fwd /= len), (side /= len);
     if (len > 0.08) {
       let fx, fz;
-      if (p.look === "mouse") (fx = -Math.sin(p.yaw)), (fz = -Math.cos(p.yaw));
+      if (cmd.dir) [fx, fz] = cmd.dir;
+      else if (p.look === "mouse") (fx = -Math.sin(p.yaw)), (fz = -Math.cos(p.yaw));
       else {
         camera.getWorldDirection(dir);
         let h = Math.hypot(dir.x, dir.z);
@@ -8762,6 +8902,7 @@ function createHud({ camera }) {
     text: "",
     say: "",
     cardBtn: null,
+    gameBtn: null,
     action: { label: "", enabled: false },
     counter: { mode: null, done: 0, progress: 0, invalid: false, target: "marwa" },
     toast: { msg: "", kind: "info", until: 0 },
@@ -8785,20 +8926,31 @@ function createHud({ camera }) {
     });
     changed();
   };
+  // زر البطاقة: زر المنسك إن وُجد (انتقل إلى الصفا)، وإلا فزر «تعلّم سريع» (hud.extraBtn من 09-fast.js)
+  const showCardBtn = () => {
+    const btn = s.gameBtn || (hud.extraBtn ? hud.extraBtn() : null);
+    s.cardBtn = btn;
+    dom.cardBtn.hidden = !btn;
+    if (btn) dom.cardBtn.textContent = btn;
+  };
   hud.setCard = ({ title = "", text = "", say = "", btn = null }) => {
     const newTitle = title !== s.title;
     s.title = title;
     s.text = text;
     s.say = say;
-    s.cardBtn = btn;
+    s.gameBtn = btn;
+    showCardBtn();
     dom.cardTitle.textContent = title;
     dom.cardText.textContent = text;
     dom.cardSay.textContent = say;
     dom.cardSay.hidden = !say;
-    dom.cardBtn.hidden = !btn;
-    if (btn) dom.cardBtn.textContent = btn;
     if (newTitle && hud.onNewCard) hud.onNewCard();
     changed();
+  };
+  hud.refreshCardBtn = () => {
+    const old = s.cardBtn;
+    showCardBtn();
+    if (old !== s.cardBtn) changed();
   };
   hud.setAction = (label, enabled) => {
     if (s.action.label === label && s.action.enabled === enabled) return;
@@ -8879,6 +9031,75 @@ function createHud({ camera }) {
     fade.visible = m.opacity > 0.01;
   };
   return hud;
+}
+// «تعلّم سريع»: زر في البطاقة يمشي عن اللاعب المقاطع الطويلة، ولا يختصر خطوة من المناسك:
+//   إلى بداية الطواف، وإلى خلف المقام: يمشي حتى يضيء الزر الذهبي، ثم ينظر إلى الحجر الأسود أو الكعبة
+//   الطواف «أكمل الشوط»: يمشي بقية الشوط والكعبة عن اليسار، حول الحِجر، حتى خط الحجر الأسود. والتكبير بعده على اللاعب
+//   السعي «أكمل الشوط»: يمشي إلى الصفا أو المروة. والدعاء عند الطرف على اللاعب
+// المشي بمنطق المناسك نفسه: game.update خطوة خطوة، خلف تعتيم قصير كالانتقال إلى الصفا.
+// والهرولة كما ضبطها اللاعب قبل الزر، فيُحسب الرَّمَل والإسراع بين العلمين كما لو مشى. ومدة التدريب بالوقت الحقيقي.
+var FAST_STEP = 0.5; // متر لكل خطوة من المشي المسرَّع
+var FAST_FADE_MS = 380;
+
+function createFastLearning({ game, hud, player, world }) {
+  const f = { enabled: false, busy: false };
+  const guide = createRouteGuide({ game, hud, laneAt: world.crowds.laneAt });
+
+  // عنوان الزر في البطاقة، أو null حيث لا مقطع طويل (أو وصل اللاعب)
+  f.label = () => {
+    if (!f.enabled || f.busy) return null;
+    const L = jc(game.gender).fast;
+    const p = player.getPos();
+    if (game.stage === "toStart") return Zc(p.x, p.z) ? null : L.toStart;
+    if (game.stage === "toMaqam") return $c(p.x, p.z) ? null : L.toMaqam;
+    if (game.stage === "tawaf" || game.stage === "sai") return L.lap;
+    return null;
+  };
+
+  function walk(stage) {
+    if (game.stage !== stage) return;
+    const clock = game.clock;
+    const start = game.debug();
+    let p = player.getPos();
+    guide.sense = 1; // الكعبة عن اليسار
+    guide.rHold = Math.hypot(p.x, p.z); // على البعد نفسه من الكعبة
+    const done = () => {
+      if (game.stage !== stage) return true; // الشوط السابع ينقل إلى المنسك التالي
+      if (stage === "tawaf") return game.debug().T.laps > start.T.laps;
+      if (stage === "sai") return game.debug().A.lap > start.A.lap;
+      return hud.model.action.enabled;
+    };
+    for (let i = 0; i < 4000 && !done(); i++) {
+      p = player.getPos();
+      const d = guide.direction(p.x, p.z, 0, 0, false, 0);
+      if (!d) break;
+      const [nx, nz] = xd(p.x, p.z, p.x + d[0] * FAST_STEP, p.z + d[1] * FAST_STEP);
+      if (Math.hypot(nx - p.x, nz - p.z) < 0.05) break; // علق
+      player.teleport(nx, nz, d[0], d[1]);
+      player.moving = true;
+      game.update(FAST_STEP / (player.isJogging() ? 3.9 : 2.4));
+    }
+    player.moving = false;
+    game.clock = clock;
+    // بعد الوصول: إلى الحجر الأسود عند البداية، وإلى الكعبة خلف المقام وعلى الصفا والمروة
+    const look = stage === "toStart" ? Ln.black : stage === "toMaqam" || stage === "sai" ? [0, 0] : null;
+    if (look) (p = player.getPos()), player.teleport(p.x, p.z, look[0] - p.x, look[1] - p.z);
+  }
+
+  f.run = () => {
+    const stage = game.stage;
+    if (!f.label()) return;
+    f.busy = true;
+    hud.refreshCardBtn();
+    hud.fadeTo(1);
+    setTimeout(() => {
+      walk(stage);
+      hud.fadeTo(0);
+      f.busy = false;
+      hud.refreshCardBtn();
+    }, FAST_FADE_MS);
+  };
+  return f;
 }
 function Pd({ world: i, hud: t, player: e }) {
   let n = { gender: "m", stage: "intro", sub: "", t0: 0, clock: 0 },
@@ -9281,7 +9502,9 @@ function Pd({ world: i, hud: t, player: e }) {
 // أوضاع التدريب الأربعة. كلها تشترك في المشهد (03-world) والمنطق (09-game) واللاعب (06-player) واللوحات (07-panels).
 // الوضع يقرّر: من أين يأتي النظر والمشي، وكيف يُختار الزر، وكيف يُرسم الإطار.
 //
-//   mobile     الجوال: النظر بمستشعر الحركة (أو السحب إن لم يوجد)، والمشي بالعصا، واللمس على اللوحات
+//   mobile     الجوال: النظر بالسحب (والمستشعر اختياري)، والمشي بعصا عائمة تحت الإبهام الأيسر، واللمس على اللوحات.
+//              والمشي الموجّه (06-guide.js): العصا إلى الأمام تمشي على مسار المنسك والكاميرا تلتفت معه،
+//              و«مشي مستمر» يمشي وحده حتى ما يحتاج منسكًا
 //   cardboard  علبة VR: صورتان جنبًا إلى جنب، والنظر بالمستشعر، والاختيار بالنظر ثانية واحدة أو بلمس الشاشة،
 //              والمشي بزر «امشِ» أو بيد تحكم بلوتوث (Gamepad API أو أسهم لوحة المفاتيح)
 //   desktop    الحاسوب: الأسهم وWASD وسحب الفأرة، والمسافة للمنسك، والنقر على اللوحات
@@ -9290,18 +9513,28 @@ var MODE_NAMES = { mobile: "الجوال", cardboard: "علبة VR", desktop: "�
 var DWELL_SECONDS = 1; // مدة النظر إلى زر لاختياره في علبة VR
 var CARDBOARD_IPD = 0.064;
 var CARDBOARD_FOV = 75; // زاوية الرؤية الرأسية لكل عين
+var AUTO_TURN_DELAY = 2; // ثانيتان بعد آخر سحب أو دوران قبل أن تلتفت الكاميرا مع المسار
+var AUTO_TURN_RATE = 3; // سرعة التفات الكاميرا مع المسار (لكل ثانية)
 
-function createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle }) {
+function createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle, world }) {
   const { keyboard, pointer, joystick, sensor, gamepad } = input;
   const m = {
     mode: "desktop",
     comfort: false, // الحركة المريحة: تعتيم الأطراف، والدوران على دفعات بالأسهم
     comfortChoice: null, // اختيار المستخدم إن غيّره، وإلا فالافتراضي بحسب الوضع
     walking: false, // المشي التلقائي في علبة VR
+    gyro: false, // الجوال: النظر بتحريك الجوال. اختياري، والسحب هو الافتراضي
+    guide: true, // الجوال: المشي الموجّه
+    autoWalk: false, // الجوال: «مشي مستمر»
+    guideDir: null, // اتجاه المشي الموجّه في آخر إطار (للاختبار)
     gaze: { id: null, t: 0, consumed: false },
     rayHover: null,
     onChange: null,
+    onAutoWalk: null,
   };
+  const guide = createRouteGuide({ game, hud, laneAt: world.crowds.laneAt });
+  // حالة المساعدة في الجوال. clock بزمن الإطارات لا بالساعة، فيعمل في الاختبار مع step()
+  const assist = { clock: 0, dragT: -1e9, turnedAt: player.turnedAt, pushing: false, held: false, key: "", enabled: false, stuck: 0, faceTo: null };
   const snapPad = createSnapLatch();
   const snapXR = createSnapLatch();
   let xrAPrev = false;
@@ -9322,6 +9555,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
   ray.renderOrder = 1003;
 
   const isVR = (mode = m.mode) => mode === "xr" || mode === "cardboard";
+  const useSensor = (mode = m.mode) => mode === "cardboard" || (mode === "mobile" && m.gyro);
 
   m.set = (mode) => {
     m.mode = mode;
@@ -9332,6 +9566,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     pointer.enabled = mode !== "xr";
     joystick.enabled = mode === "mobile";
     m.walking = false;
+    m.setAutoWalk(false);
     panels.walking = false;
     panels.setKind(vr ? "board" : "flat", {
       hint: mode === "desktop" ? "مفتاح المسافة" : "",
@@ -9342,7 +9577,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
           : "انظر إلى زر ثانية واحدة، أو المس الشاشة",
       cardboardButtons: mode === "cardboard",
     });
-    if (mode !== "xr") player.setLook(mode !== "desktop" && sensor.hasData() ? "sensor" : "mouse");
+    if (mode !== "xr") player.setLook(useSensor(mode) && sensor.hasData() ? "sensor" : "mouse");
     reticle.set(false);
     ray.visible = false;
     m.resize();
@@ -9358,6 +9593,22 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     m.walking = !m.walking;
     panels.walking = m.walking;
     panels.markDirty();
+  };
+  // يُستدعى من ضغطة المستخدم على المفتاح: iOS يطلب إذن المستشعر من داخلها
+  m.setGyro = (on) => {
+    m.gyro = on;
+    if (on) sensor.start();
+    else if (m.mode === "mobile" && player.look === "sensor") player.setLook("mouse");
+  };
+  m.setGuide = (on) => {
+    m.guide = on;
+    guide.reset();
+  };
+  m.setAutoWalk = (on) => {
+    if (m.autoWalk === on) return;
+    m.autoWalk = on;
+    assist.stuck = 0;
+    m.onAutoWalk && m.onAutoWalk(on);
   };
 
   // «اختر»: الزر تحت النظر أو الذراع إن وُجد، وإلا فالمنسك الحالي
@@ -9389,6 +9640,14 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     const hit = panels.hitScreen(x, y);
     if (hit && hit.id) panels.press(hit.id);
   };
+  // الجوال: لمسة في النصف الأيسر السفلي تبدأ عصا المشي تحت الإبهام، إلا إن وقعت على لوحة. وما سواها سحب للالتفات
+  pointer.claim = (e) =>
+    m.mode === "mobile" &&
+    player.enabled &&
+    e.clientX < innerWidth * 0.5 &&
+    e.clientY > innerHeight * 0.4 &&
+    !panels.hitScreen(e.clientX, e.clientY) &&
+    joystick.begin(e);
 
   // أحداث زناد النظارة
   player.controllers.forEach((c) => {
@@ -9419,13 +9678,14 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
       xrAPrev = x.a;
     } else {
       // النظر
-      if ((mode === "mobile" || mode === "cardboard") && sensor.hasData()) {
+      if (useSensor(mode) && sensor.hasData()) {
         sensor.read(player.sensorQuat);
         if (player.look !== "sensor") player.setLook("sensor");
       }
       const [dy, dp] = pointer.takeDrag();
       // في علبة VR لا سحب، إلا إن لم يوجد مستشعر
-      if (player.enabled && (mode !== "cardboard" || player.look === "mouse")) {
+      const dragged = player.enabled && (mode !== "cardboard" || player.look === "mouse") && (dy !== 0 || dp !== 0);
+      if (dragged) {
         player.yaw += dy;
         if (player.look === "mouse") player.pitch = Math.max(-1.25, Math.min(1.1, player.pitch + dp));
       }
@@ -9449,9 +9709,64 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
         if (pad.edge(1) && mode === "cardboard") m.toggleWalk();
       }
       if (mode === "cardboard" && m.walking) fwd = Math.max(fwd, 1);
+      if (mode === "mobile") {
+        if (m.autoWalk && joystick.y < -0.3) m.setAutoWalk(false); // العصا إلى الخلف توقفه
+        const a = mobileAssist(dt, fwd, side, dragged);
+        return player.update(dt, { forward: a.fwd, strafe: side, dir: a.dir });
+      }
     }
     player.update(dt, { forward: fwd, strafe: side });
   };
+
+  // ——— الجوال: المشي الموجّه، والمشي المستمر، والتفات الكاميرا مع المسار ———
+  function mobileAssist(dt, fwd, side, dragged) {
+    const a = assist;
+    a.clock += dt;
+    // السحب أو زر الدوران: يلتفت اللاعب بنفسه، فلا تلتفت الكاميرا وحدها ثانيتين
+    if (dragged || player.turnedAt !== a.turnedAt) (a.dragT = a.clock), (a.turnedAt = player.turnedAt), (a.faceTo = null);
+    // الوصول إلى ما يحتاج منسكًا (أضاء الزر الذهبي خارج الطواف، أو تغيّر المنسك أو الهدف):
+    // يقف المشي المستمر، ويقف من يدفع العصا حتى يرفع إبهامه، ثم ينظر إلى الحجر الأسود أو الكعبة
+    const key = `${game.stage}|${hud.model.target}`;
+    const on = hud.model.action.enabled;
+    const arrived = key !== a.key || (on && !a.enabled && game.stage !== "tawaf");
+    a.key = key;
+    a.enabled = on;
+    if (arrived) {
+      const walking = a.pushing || m.autoWalk;
+      m.setAutoWalk(false);
+      a.held = a.pushing;
+      a.faceTo = walking && m.guide ? guide.arrivalFace(game.stage) : null;
+    }
+    if (m.autoWalk) fwd = Math.max(fwd, 1);
+    const pushing = fwd > 0.08;
+    const fresh = pushing && !a.pushing;
+    a.pushing = pushing;
+    if (!pushing) a.held = false;
+    if (a.held) fwd = 0;
+    let dir = null;
+    if (m.guide && pushing && !a.held && player.enabled) {
+      const p = player.getPos();
+      const h = player.headingYaw();
+      dir = guide.direction(p.x, p.z, -Math.sin(h), -Math.cos(h), fresh, side);
+    }
+    m.guideDir = dir;
+    // الكاميرا تلتفت مع المسار، أو إلى الحجر الأسود بعد الوصول. لا مع المستشعر: الجوال في يد اللاعب يدير النظر
+    let want = null;
+    const p = dir || a.faceTo ? player.getPos() : null;
+    if (dir) (want = Math.atan2(-dir[0], -dir[1])), (a.faceTo = null);
+    else if (a.faceTo && !pushing) want = Math.atan2(-(a.faceTo[0] - p.x), -(a.faceTo[1] - p.z));
+    if (want !== null && player.look === "mouse" && player.enabled && a.clock - a.dragT > AUTO_TURN_DELAY) {
+      const diff = ll(want - player.yaw);
+      player.yaw += diff * Math.min(1, dt * AUTO_TURN_RATE);
+      if (a.faceTo && Math.abs(diff) < 0.02) a.faceTo = null;
+    }
+    // المشي المستمر يقف إن علق اللاعب (جدار، أو اتجاه بلا مسار)
+    if (m.autoWalk && player.enabled) {
+      a.stuck = player.speed < 0.3 ? a.stuck + dt : 0;
+      if (a.stuck > 1.2) m.setAutoWalk(false);
+    }
+    return { fwd, dir };
+  }
 
   // ——— بعد تحديث اللوحات: النظر أو الذراع على الأزرار، وتعتيم الأطراف ———
   const o = new Vector3();
@@ -9526,7 +9841,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
   // يُستدعى من ضغطة «ابدأ» لأن المتصفح يشترط ضغطة المستخدم لإذن المستشعر وملء الشاشة وجلسة النظارة
   m.enter = async (mode) => {
     if (mode === "xr") return m.enterXR();
-    if (mode === "mobile" || mode === "cardboard") sensor.start();
+    if (useSensor(mode)) sensor.start();
     if (mode === "cardboard") {
       try {
         await document.documentElement.requestFullscreen?.();
@@ -9610,7 +9925,7 @@ var input = {
 };
 var vignette = createComfortVignette(camera);
 var reticle = createGazeReticle(camera);
-var modes = createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle });
+var modes = createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle, world });
 
 // ——— الجودة وأوقات المشهد (الطبقتان 0 و1 من docs/realism-plan.md) ———
 var quality = createQuality({ renderer, world });
@@ -9662,7 +9977,10 @@ atmosphere.setTime(
   })(),
 );
 
-hud.onCardBtn = () => (game.stage === "done" ? restart() : game.fastToSafa());
+// زر البطاقة: زر المنسك (انتقل إلى الصفا) إن وُجد، وإلا فزر «تعلّم سريع»
+var fast = createFastLearning({ game, hud, player, world });
+hud.extraBtn = fast.label;
+hud.onCardBtn = () => (game.stage === "done" ? restart() : hud.model.gameBtn ? game.fastToSafa() : fast.run());
 Promise.race([
   Promise.all([
     document.fonts.load('600 40px "Noto Kufi Arabic"'),
@@ -9697,13 +10015,13 @@ var chosenMode = (() => {
 })();
 function chooseMode(mode) {
   chosenMode = mode;
-  document.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-checked", b.dataset.mode === mode ? "true" : "false"));
+  document.querySelectorAll("button[data-mode]").forEach((b) => b.setAttribute("aria-checked", b.dataset.mode === mode ? "true" : "false"));
   document.querySelectorAll(".mode-note").forEach((n) => (n.hidden = n.dataset.for !== mode));
   try {
     localStorage.setItem("umrah.mode", mode);
   } catch {}
 }
-document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => chooseMode(b.dataset.mode)));
+document.querySelectorAll("button[data-mode]").forEach((b) => b.addEventListener("click", () => chooseMode(b.dataset.mode)));
 chooseMode(chosenMode);
 modes.xrSupported().then((ok) => {
   document.querySelectorAll('[data-mode="xr"], #menuVr').forEach((b) => (b.hidden = !ok));
@@ -9727,6 +10045,29 @@ bindOpt("voice", (on) => hud.setVoice(on));
 bindOpt("labels", (on) => world.setLabels(on));
 bindOpt("crowd", (on) => world.setCrowd(on));
 bindOpt("comfort", (on) => modes.setComfort(on));
+// الجوال: النظر بتحريك الجوال (اختياري، والسحب هو الافتراضي)، والمشي الموجّه (مفعّل افتراضيًا). يُحفظان
+function savedFlag(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === "1" || v === "0") return v === "1";
+  } catch {}
+  return fallback;
+}
+function saveFlag(key, on) {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {}
+}
+modes.gyro = savedFlag("umrah.gyro", false);
+modes.setGuide(savedFlag("umrah.guide", true));
+syncOpt("gyro", modes.gyro);
+syncOpt("guide", modes.guide);
+bindOpt("gyro", (on) => (modes.setGyro(on), saveFlag("umrah.gyro", on)));
+bindOpt("guide", (on) => (modes.setGuide(on), saveFlag("umrah.guide", on)));
+// «تعلّم سريع» (09-fast.js): زر في البطاقة يمشي الأشواط والمسافات الطويلة
+fast.enabled = savedFlag("umrah.fast", false);
+syncOpt("fast", fast.enabled);
+bindOpt("fast", (on) => ((fast.enabled = on), saveFlag("umrah.fast", on), hud.refreshCardBtn()));
 var refreshVoice = () => {
   const ok = hud.voiceAvailable();
   document.querySelectorAll('input[data-opt="voice"]').forEach((e) => {
@@ -9743,7 +10084,7 @@ if ("speechSynthesis" in window) speechSynthesis.addEventListener?.("voiceschang
 
 // ——— البدء ———
 var startHints = {
-  mobile: "حرّك الجوال لتلتفت، وامشِ بالعصا تحت إبهامك الأيسر، والمس الزر الذهبي للمنسك.",
+  mobile: "ضع إبهامك الأيسر أسفل الشاشة لتمشي، واسحب بالأيمن لتلتفت، والمس الزر الذهبي للمنسك.",
   cardboard: "انظر إلى زر ثانية واحدة لتختاره، والمس الشاشة لتمشي أو تقف.",
   desktop: "امشِ بالأسهم أو بمفاتيح WASD، والتفت بسحب الفأرة، والمسافة للمنسك.",
   xr: "",
@@ -9761,7 +10102,10 @@ function beginTraining() {
   const hint = startHints[modes.mode];
   if (fromIntro && hint) setTimeout(() => hud.toast(hint, "info", 5), 900);
 }
+// بعد إغلاق نافذة بالنقر يبقى التركيز على زرها المخفي لحظة، فتضيع أول ضغطة مسافة (المسافة على زر تخصّه)
+var dropFocus = () => document.activeElement && document.activeElement !== document.body && document.activeElement.blur?.();
 function restart() {
+  dropFocus();
   $id("summary").hidden = true;
   $id("menu").hidden = true;
   player.enabled = true;
@@ -9805,6 +10149,11 @@ $id("jogBtn").addEventListener("click", () => {
   player.jogToggle = !player.jogToggle;
   hud.setJog(player.jogToggle);
 });
+$id("autoWalkBtn").addEventListener("click", () => modes.setAutoWalk(!modes.autoWalk));
+modes.onAutoWalk = (on) => {
+  $id("autoWalkBtn").classList.toggle("on", on);
+  $id("autoWalkBtn").setAttribute("aria-pressed", on ? "true" : "false");
+};
 $id("turnLBtn").addEventListener("click", () => player.snapTurn(1));
 $id("turnRBtn").addEventListener("click", () => player.snapTurn(-1));
 $id("menuBtn").addEventListener("click", () => {
@@ -9812,6 +10161,7 @@ $id("menuBtn").addEventListener("click", () => {
   player.enabled = false;
 });
 $id("menuClose").addEventListener("click", () => {
+  dropFocus();
   $id("menu").hidden = true;
   player.enabled = true;
 });
@@ -9843,7 +10193,7 @@ game.onFinish = (r) => {
   hud.setAction("أعِد التدريب", true);
 };
 $id("againBtn").addEventListener("click", restart);
-$id("freeBtn").addEventListener("click", () => ($id("summary").hidden = true));
+$id("freeBtn").addEventListener("click", () => (dropFocus(), ($id("summary").hidden = true)));
 addEventListener("resize", () => modes.resize());
 
 // ——— حلقة الإطار ———
@@ -9879,7 +10229,7 @@ renderer.setAnimationLoop(() => {
   step(Math.min(realDt, 0.05));
   modes.render();
 });
-window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, step };
+window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, fast, step };
 })();
 
 </script>
