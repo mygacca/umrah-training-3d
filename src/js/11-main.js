@@ -258,17 +258,19 @@ $id("cbExit").addEventListener("click", () => modes.exitCardboard());
 
 // ——— أزرار الصفحة ———
 $id("actBtn").addEventListener("click", () => game.act());
-$id("jogBtn").addEventListener("click", () => {
+// أزرار الجوال تعمل بإصبع ثانٍ والإبهام على العصا (createPressButton في 05-input.js)
+createPressButton($id("jogBtn"), () => {
   player.jogToggle = !player.jogToggle;
   hud.setJog(player.jogToggle);
 });
-$id("autoWalkBtn").addEventListener("click", () => modes.setAutoWalk(!modes.autoWalk));
+createPressButton($id("autoWalkBtn"), () => modes.setAutoWalk(!modes.autoWalk));
 modes.onAutoWalk = (on) => {
   $id("autoWalkBtn").classList.toggle("on", on);
   $id("autoWalkBtn").setAttribute("aria-pressed", on ? "true" : "false");
 };
-$id("turnLBtn").addEventListener("click", () => player.snapTurn(1));
-$id("turnRBtn").addEventListener("click", () => player.snapTurn(-1));
+// الإبقاء على زر الدوران يكرّر الدفعة (30°) كل ثلث ثانية
+createPressButton($id("turnLBtn"), () => player.snapTurn(1), { repeat: 330 });
+createPressButton($id("turnRBtn"), () => player.snapTurn(-1), { repeat: 330 });
 $id("menuBtn").addEventListener("click", () => {
   $id("menu").hidden = false;
   player.enabled = false;

@@ -189,18 +189,21 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   pointer-events: none !important;
 }
 #actions > * { pointer-events: auto; }
-.turns { display: flex; gap: 8px; }
+/* بلا إيماءات المتصفح: إصبع ثانٍ على زر كان يبدأ إيماءة تكبير، فيُلغي لمسة العصا والزر معًا */
+#actions button, #joy { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#actions button.pressed { transform: scale(0.93); background: rgba(214, 176, 98, 0.55); }
+.turns { display: flex; gap: 10px; }
 .turns button {
-  width: 44px;
-  height: 44px;
-  border-radius: 22px;
+  width: 50px;
+  height: 50px;
+  border-radius: 25px;
   border: 1px solid rgba(246, 241, 228, 0.4);
   background: rgba(10, 36, 31, 0.6);
   color: var(--ivory);
   font: 600 20px/1 var(--kufi);
 }
 #jogBtn, #autoWalkBtn {
-  height: 44px;
+  height: 46px;
   padding: 0 18px;
   border-radius: 22px;
   border: 1px solid rgba(246, 241, 228, 0.4);
@@ -289,7 +292,8 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
 }
 @media (max-height: 480px) and (orientation: landscape) {
   #joy { width: 110px; height: 110px; bottom: calc(14px + var(--safe-b)); }
-  #actions { bottom: calc(14px + 64px + 10px + var(--safe-b)); }
+  /* أفقي: الأزرار صفًّا واحدًا فوق الزر الذهبي، فلا تغطي البطاقة */
+  #actions { bottom: calc(14px + 64px + 10px + var(--safe-b)); flex-direction: row; align-items: center; }
 }
 
 #fail { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--deep); text-align: center; font: 500 16px / 1.9 var(--kufi); }
@@ -7528,6 +7532,37 @@ function createSnapLatch() {
     return 0;
   };
 }
+
+// زر في الصفحة يعمل بلمسة الإصبع نفسها (pointerdown)، لا بـ click:
+// المتصفح لا يرسل click للمسة إصبع ثانٍ والإبهام على العصا، فكانت أزرار الدوران والهرولة لا تستجيب أثناء المشي.
+// repeat: يتكرر ما دام الإصبع على الزر (الدوران على دفعات). وclick من لوحة المفاتيح (detail = 0) يعمل كما هو.
+function createPressButton(el, fn, { repeat = 0 } = {}) {
+  let timer = 0;
+  let id = null;
+  const stop = (e) => {
+    if (e && e.pointerId !== id) return;
+    id = null;
+    clearTimeout(timer);
+    el.classList.remove("pressed");
+  };
+  el.addEventListener("pointerdown", (e) => {
+    if (id !== null) return;
+    e.preventDefault();
+    id = e.pointerId;
+    el.setPointerCapture?.(e.pointerId);
+    el.classList.add("pressed");
+    if (navigator.vibrate) navigator.vibrate(8);
+    fn();
+    if (repeat) {
+      const again = () => (fn(), (timer = setTimeout(again, repeat)));
+      timer = setTimeout(again, repeat * 1.5);
+    }
+  });
+  el.addEventListener("pointerup", stop);
+  el.addEventListener("pointercancel", stop);
+  el.addEventListener("lostpointercapture", stop);
+  el.addEventListener("click", (e) => e.detail === 0 && fn());
+}
 // مستويات الجودة (الطبقة 0 من docs/realism-plan.md).
 // المستوى يُختار تلقائيًا بحسب الوضع، ويُغيَّر من القائمة. ونسبة البكسل تتكيّف مع سرعة الإطارات:
 // تنخفض إن بقيت الإطارات بطيئة ثانيتين، وترتفع ببطء إن عادت سريعة. وفي النظارة يزيد التنقيط المركزي بدلها.
@@ -10145,17 +10180,19 @@ $id("cbExit").addEventListener("click", () => modes.exitCardboard());
 
 // ——— أزرار الصفحة ———
 $id("actBtn").addEventListener("click", () => game.act());
-$id("jogBtn").addEventListener("click", () => {
+// أزرار الجوال تعمل بإصبع ثانٍ والإبهام على العصا (createPressButton في 05-input.js)
+createPressButton($id("jogBtn"), () => {
   player.jogToggle = !player.jogToggle;
   hud.setJog(player.jogToggle);
 });
-$id("autoWalkBtn").addEventListener("click", () => modes.setAutoWalk(!modes.autoWalk));
+createPressButton($id("autoWalkBtn"), () => modes.setAutoWalk(!modes.autoWalk));
 modes.onAutoWalk = (on) => {
   $id("autoWalkBtn").classList.toggle("on", on);
   $id("autoWalkBtn").setAttribute("aria-pressed", on ? "true" : "false");
 };
-$id("turnLBtn").addEventListener("click", () => player.snapTurn(1));
-$id("turnRBtn").addEventListener("click", () => player.snapTurn(-1));
+// الإبقاء على زر الدوران يكرّر الدفعة (30°) كل ثلث ثانية
+createPressButton($id("turnLBtn"), () => player.snapTurn(1), { repeat: 330 });
+createPressButton($id("turnRBtn"), () => player.snapTurn(-1), { repeat: 330 });
 $id("menuBtn").addEventListener("click", () => {
   $id("menu").hidden = false;
   player.enabled = false;
