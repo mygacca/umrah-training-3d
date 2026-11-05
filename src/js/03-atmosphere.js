@@ -353,7 +353,8 @@ function createAtmosphere({ scene, renderer, world }) {
     light.visible = T.night;
   };
 
-  atm.setTime = (name) => {
+  // save = false: وقت يفرضه منسك (الليل في مزدلفة) فلا يُحفظ اختيارًا للمستخدم
+  atm.setTime = (name, { save = true } = {}) => {
     if (!TIMES_OF_DAY[name]) name = DEFAULT_TIME;
     const T = TIMES_OF_DAY[name];
     atm.time = name;
@@ -383,9 +384,12 @@ function createAtmosphere({ scene, renderer, world }) {
     world.crowds.setLight({ impostor: T.night ? 0.62 : 0.95, blob: T.night ? 0.6 : 1 });
     regenerateEnvironment();
     bake();
-    try {
-      localStorage.setItem("umrah.time", name);
-    } catch {}
+    if (save) {
+      atm.chosen = name;
+      try {
+        localStorage.setItem("umrah.time", name);
+      } catch {}
+    }
     if (atm.onChange) atm.onChange(name);
   };
   atm.setResolution = (res) => {

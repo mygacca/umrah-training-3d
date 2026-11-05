@@ -20,6 +20,7 @@ function Rd(i, t, e, n, s = 1) {
     i.restore();
 }
 function Cd(i, t, e, n, s, r, a, o) {
+  if (s.site) return paintSiteMap(i, t, e, n, s, r, a, o);
   i.save(), i.translate(t, e);
   let l = n / 2,
     c = n / 120,
@@ -180,7 +181,60 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.roundRect(x, y, w, h, r);
 }
 
+// خريطة موقع من مشاعر الحج (03-mashair.js، site.map): المعالم، وحدود عرفة، والهدف، واللاعب
+function paintSiteMap(i, t, e, n, s, r, a, o) {
+  const m = s.site.map;
+  const l = n / 2;
+  const c = n / 120;
+  i.save();
+  i.translate(t, e);
+  i.beginPath();
+  i.arc(l, l, l - 1.5 * c, 0, le);
+  i.fillStyle = "rgba(10,36,31,0.86)";
+  i.fill();
+  i.lineWidth = 1.4 * c;
+  i.strokeStyle = "rgba(214,176,98,0.9)";
+  i.stroke();
+  i.clip();
+  const k = (l - 8 * c) / m.radius;
+  const X = (x) => l + (x - m.center[0]) * k;
+  const Z = (z) => l + (z - m.center[1]) * k;
+  if (m.ring) {
+    i.beginPath();
+    i.arc(X(0), Z(0), m.ring * k, 0, le);
+    i.fillStyle = "rgba(224,184,74,0.12)";
+    i.fill();
+    i.strokeStyle = "#e0b84a";
+    i.lineWidth = 1.6 * c;
+    i.stroke();
+  }
+  i.direction = "rtl";
+  i.textAlign = "center";
+  i.textBaseline = "middle";
+  i.font = `600 ${Math.round(9 * c)}px ${ri}`;
+  for (const p of m.marks) {
+    i.beginPath();
+    i.arc(X(p.x), Z(p.z), Math.max(3 * c, p.r * k), 0, le);
+    i.fillStyle = p.color;
+    i.fill();
+    if (!p.label) continue;
+    i.fillStyle = "rgba(246,241,228,0.95)";
+    i.fillText(p.label, X(p.x) + Math.max(3 * c, p.r * k) + 14 * c, Z(p.z));
+  }
+  if (s.target) {
+    i.strokeStyle = "#ffd36b";
+    i.lineWidth = 1.6 * c;
+    i.beginPath();
+    i.arc(X(s.target[0]), Z(s.target[1]), (5 + 1.5 * Math.sin(o * 4)) * c, 0, le);
+    i.stroke();
+  }
+  if (r) Rd(i, X(r.x), Z(r.z), -a, c);
+  i.restore();
+}
+
+// الشريط: مراحل العمرة (Ti)، أو مراحل الحج (s.railList = HAJJ_RAIL) والمرحلة الحالية s.railStep من 09-hajj.js
 function railIndex(s) {
+  if (s.railList) return s.rite === "end" ? s.railList.length : s.railStep || 0;
   return s.rite === "end" ? Ti.length : Ti.findIndex((t) => t.k === s.rite);
 }
 
@@ -193,10 +247,11 @@ function paintRail(ctx, w, h, s, { narrow = false } = {}) {
   ctx.lineWidth = 1;
   ctx.stroke();
   const L = railIndex(s);
-  const cell = (w - 20) / Ti.length;
+  const list = s.railList || Ti;
+  const cell = (w - 20) / list.length;
   ctx.direction = "rtl";
   ctx.textBaseline = "middle";
-  Ti.forEach((t, i) => {
+  list.forEach((t, i) => {
     const cx = w - 10 - cell * i - cell / 2;
     const now = i === L;
     const done = i < L;
@@ -225,7 +280,8 @@ function paintRail(ctx, w, h, s, { narrow = false } = {}) {
 
 function counterLabel(s) {
   const c = s.counter;
-  if (c.mode !== "tawaf" && c.mode !== "sai") return "المسجد الحرام";
+  if (c.mode === "jamrah") return c.label;
+  if (c.mode !== "tawaf" && c.mode !== "sai") return s.site ? s.site.name : "المسجد الحرام";
   const n = De(Math.min(c.done + 1, 7));
   return c.mode === "tawaf"
     ? `الشوط ${n} من ${De(7)}`
@@ -252,7 +308,7 @@ function paintInstrument(ctx, size, s, pos, heading, time, { shadow = true } = {
   ctx.shadowBlur = 0;
   let h = size + 6 + lines.length * 18.6;
   const c = s.counter;
-  if (c.mode === "tawaf" || c.mode === "sai") {
+  if (c.mode === "tawaf" || c.mode === "sai" || c.mode === "jamrah") {
     for (let i = 0; i < 7; i++) {
       const x = size / 2 + (3 - i) * 14;
       ctx.beginPath();
@@ -268,7 +324,7 @@ function paintInstrument(ctx, size, s, pos, heading, time, { shadow = true } = {
 
 function cardContent(s) {
   return s.veil
-    ? { title: "ركعتا الطواف", text: s.veil, say: "" }
+    ? { title: s.veilTitle || "ركعتا الطواف", text: s.veil, say: "" }
     : { title: s.title, text: s.text, say: s.say };
 }
 

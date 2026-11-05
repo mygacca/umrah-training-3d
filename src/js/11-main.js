@@ -1,5 +1,7 @@
 // التشغيل: الرسّام والمشهد والكاميرا، وربط أزرار الصفحة، وحلقة الإطار. يجب أن يبقى آخر ملف.
 var $id = (id) => document.getElementById(id);
+// بعد إغلاق نافذة بالنقر يبقى التركيز على زرها المخفي لحظة، فتضيع أول ضغطة مسافة (المسافة على زر تخصّه)
+var dropFocus = () => document.activeElement && document.activeElement !== document.body && document.activeElement.blur?.();
 var isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
 document.body.classList.add(isTouch ? "touch" : "mouse");
 var reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -43,6 +45,20 @@ var modes = createModes({ renderer, scene, camera, player, hud, panels, game, in
 // ——— الجودة وأوقات المشهد (الطبقتان 0 و1 من docs/realism-plan.md) ———
 var quality = createQuality({ renderer, world });
 var atmosphere = createAtmosphere({ scene, renderer, world });
+// المسجد الحرام كله في مجموعة واحدة: تُخفى في مشاعر الحج (03-mashair.js)، مهما غيّر غيرها ظهور أجزائها
+world.haramRoot = new Group();
+world.haramRoot.name = "haram";
+for (const o of [...scene.children]) if (!o.isLight && o !== world.sky && o.name !== "rig" && o.name !== "board") world.haramRoot.add(o);
+scene.add(world.haramRoot);
+var mashair = createMashair({ scene, world });
+var hajj = createHajj({ game, hud, player, mashair, atmosphere });
+// الحج يتولى الزر الذهبي وإطار المنطق في خطواته (game.stage === "hajj")، وما سواها لمنطق العمرة
+{
+  const act = game.act;
+  const update = game.update;
+  game.act = () => (game.stage === "hajj" ? hajj.act() : act());
+  game.update = (dt) => (update(dt), hajj.update(dt));
+}
 quality.onTier = (tier) => {
   atmosphere.setResolution(tier.shadowRes);
   materials.setKiswaRes(tier.kiswaRes);
@@ -91,9 +107,10 @@ atmosphere.setTime(
 );
 
 // زر البطاقة: زر المنسك (انتقل إلى الصفا) إن وُجد، وإلا فزر «تعلّم سريع»
-var fast = createFastLearning({ game, hud, player, world });
+var fast = createFastLearning({ game, hud, player, world, hajj });
 hud.extraBtn = fast.label;
-hud.onCardBtn = () => (game.stage === "done" ? restart() : hud.model.gameBtn ? game.fastToSafa() : fast.run());
+hud.onCardBtn = () =>
+  game.stage === "done" ? restart() : hud.model.gameBtn ? (game.stage === "hajj" ? hajj.cardBtn() : game.fastToSafa()) : fast.run();
 Promise.race([
   Promise.all([
     document.fonts.load('600 40px "Noto Kufi Arabic"'),
@@ -211,17 +228,17 @@ function beginTraining() {
   panels.active = true;
   player.rig.position.y = 0;
   player.enabled = true;
+  hajj.reset(gender);
   game.start(gender);
   const hint = startHints[modes.mode];
   if (fromIntro && hint) setTimeout(() => hud.toast(hint, "info", 5), 900);
 }
-// بعد إغلاق نافذة بالنقر يبقى التركيز على زرها المخفي لحظة، فتضيع أول ضغطة مسافة (المسافة على زر تخصّه)
-var dropFocus = () => document.activeElement && document.activeElement !== document.body && document.activeElement.blur?.();
 function restart() {
   dropFocus();
   $id("summary").hidden = true;
   $id("menu").hidden = true;
   player.enabled = true;
+  hajj.reset(gender);
   game.start(gender);
 }
 game.onAgain = restart;
@@ -249,6 +266,7 @@ $id("menuVr").addEventListener("click", () => {
 });
 document.querySelectorAll("[data-switch]").forEach((b) =>
   b.addEventListener("click", async () => {
+    dropFocus();
     $id("menu").hidden = true;
     player.enabled = true;
     await modes.enter(b.dataset.switch);
@@ -258,17 +276,19 @@ $id("cbExit").addEventListener("click", () => modes.exitCardboard());
 
 // ——— أزرار الصفحة ———
 $id("actBtn").addEventListener("click", () => game.act());
-$id("jogBtn").addEventListener("click", () => {
+// أزرار الجوال تعمل بإصبع ثانٍ والإبهام على العصا (createPressButton في 05-input.js)
+createPressButton($id("jogBtn"), () => {
   player.jogToggle = !player.jogToggle;
   hud.setJog(player.jogToggle);
 });
-$id("autoWalkBtn").addEventListener("click", () => modes.setAutoWalk(!modes.autoWalk));
+createPressButton($id("autoWalkBtn"), () => modes.setAutoWalk(!modes.autoWalk));
 modes.onAutoWalk = (on) => {
   $id("autoWalkBtn").classList.toggle("on", on);
   $id("autoWalkBtn").setAttribute("aria-pressed", on ? "true" : "false");
 };
-$id("turnLBtn").addEventListener("click", () => player.snapTurn(1));
-$id("turnRBtn").addEventListener("click", () => player.snapTurn(-1));
+// الإبقاء على زر الدوران يكرّر الدفعة (30°) كل ثلث ثانية
+createPressButton($id("turnLBtn"), () => player.snapTurn(1), { repeat: 330 });
+createPressButton($id("turnRBtn"), () => player.snapTurn(-1), { repeat: 330 });
 $id("menuBtn").addEventListener("click", () => {
   $id("menu").hidden = false;
   player.enabled = false;
@@ -281,12 +301,44 @@ $id("menuClose").addEventListener("click", () => {
 $id("restartBtn").addEventListener("click", restart);
 document.querySelectorAll("[data-jump]").forEach((b) =>
   b.addEventListener("click", () => {
+    dropFocus();
     $id("menu").hidden = true;
     $id("summary").hidden = true;
     player.enabled = true;
+    hajj.reset(gender); // من مشاعر الحج إلى المسجد الحرام
     game.jump(b.dataset.jump);
   }),
 );
+// ——— التدريب على العمرة أو الحج (التمتّع) ———
+var trainingKind = (() => {
+  const q = new URLSearchParams(location.search).get("kind");
+  if (q === "hajj" || q === "umrah") return q;
+  try {
+    if (localStorage.getItem("umrah.kind") === "hajj") return "hajj";
+  } catch {}
+  return "umrah";
+})();
+function chooseKind(kind) {
+  trainingKind = kind;
+  document.querySelectorAll("[data-kind]").forEach((b) => b.setAttribute("aria-checked", b.dataset.kind === kind ? "true" : "false"));
+  document.body.classList.toggle("kind-hajj", kind === "hajj");
+  hajj.setKind(kind);
+  try {
+    localStorage.setItem("umrah.kind", kind);
+  } catch {}
+}
+document.querySelectorAll("[data-kind]").forEach((b) => b.addEventListener("click", () => chooseKind(b.dataset.kind)));
+document.querySelectorAll("[data-kind-switch]").forEach((b) => b.addEventListener("click", () => (chooseKind(b.dataset.kindSwitch), restart())));
+document.querySelectorAll("[data-hajj-jump]").forEach((b) =>
+  b.addEventListener("click", () => {
+    dropFocus();
+    $id("menu").hidden = true;
+    $id("summary").hidden = true;
+    player.enabled = true;
+    hajj.jump(b.dataset.hajjJump);
+  }),
+);
+chooseKind(trainingKind);
 addEventListener("keydown", (e) => {
   if (e.code === "Escape" && !$id("hud").hidden && modes.mode !== "cardboard") {
     const open = $id("menu").hidden;
@@ -294,7 +346,7 @@ addEventListener("keydown", (e) => {
     player.enabled = !open;
   }
 });
-game.onFinish = (r) => {
+var showSummary = (r) => {
   $id("sumTitle").textContent = r.title;
   $id("sumSub").textContent = r.sub;
   $id("sumRows").innerHTML = r.rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
@@ -305,6 +357,9 @@ game.onFinish = (r) => {
   hud.setRite("end");
   hud.setAction("أعِد التدريب", true);
 };
+// في الحج: بعد تحلّل العمرة تبدأ أيام الحج، والملخص بعد طواف الوداع
+game.onFinish = (r) => (hajj.enabled ? hajj.afterUmrah(r) : showSummary(r));
+hajj.onFinish = showSummary;
 $id("againBtn").addEventListener("click", restart);
 $id("freeBtn").addEventListener("click", () => (dropFocus(), ($id("summary").hidden = true)));
 addEventListener("resize", () => modes.resize());
@@ -328,6 +383,7 @@ function step(dt) {
   game.update(dt);
   const pos = player.getPos();
   world.update(dt, pos);
+  mashair.update(dt, hud.time);
   hud.update(dt);
   panels.update(dt, { time: hud.time, pos, heading: player.headingPhi() });
   modes.afterFrame(dt);
@@ -342,4 +398,4 @@ renderer.setAnimationLoop(() => {
   step(Math.min(realDt, 0.05));
   modes.render();
 });
-window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, fast, step };
+window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, fast, mashair, hajj, step };

@@ -132,9 +132,12 @@ function createDriver(mode, page) {
     }), n);
   // ما يغيّره الضغط على زر، دون ما يتغير وحده كل إطار (مهلة التكبير، والزمن)
   function pressState() {
-    const { game, hud, player, modes } = window.__umrah;
+    const { game, hud, player, modes, hajj } = window.__umrah;
     const d = game.debug();
-    return JSON.stringify([d.stage, d.sub, d.stats.takbir, d.stats.dua, d.T.laps, d.A.lap, hud.model.action, hud.model.cardBtn, player.yaw.toFixed(3), player.rig.rotation.y.toFixed(3), modes.walking]);
+    // والحج: الخطوة، والحصى المرمية، والدعاء، والأخطاء (رمي حصاة لا يغيّر الزر ولا البطاقة)
+    const h = hajj.stats();
+    const hj = [h.step, hajj.busy, h.throw.count, h.aqaba, h.tashreeq, h.dua, h.wrongNahr, h.orderErr, h.stayed];
+    return JSON.stringify([d.stage, d.sub, d.stats.takbir, d.stats.dua, d.T.laps, d.A.lap, hud.model.action, hud.model.cardBtn, player.yaw.toFixed(3), player.rig.rotation.y.toFixed(3), modes.walking, hj]);
   }
   const snapshot = () => ev(pressState);
   const changedSince = (before) => page.waitForFunction(`(${pressState})() !== ${JSON.stringify(before)}`, null, { timeout: 8000 });

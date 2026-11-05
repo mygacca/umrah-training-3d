@@ -52,7 +52,11 @@ function qc(i, t) {
   let e = Xc(i, t);
   return e.zz > 0 && e.r < 0.93;
 }
+// مشاعر الحج (03-mashair.js): حين يكون اللاعب في منى أو عرفة أو مزدلفة فالمشي والتصادم من الموقع لا من المسجد الحرام.
+// SITE = { walk(x, z) → هل يُمشى هنا، collide(x, z) → [x, z] } أو null في المسجد الحرام
+var SITE = null;
 function zs(i, t) {
+  if (SITE) return SITE.walk(i, t);
   if (Math.hypot(i, t) < pe.walk) return !0;
   let e = dt.pass;
   return (
@@ -62,6 +66,7 @@ function zs(i, t) {
 }
 var Ei = 0.35;
 function Yc(i, t) {
+  if (SITE) return SITE.collide(i, t);
   let [e, n] = ol(i, t),
     s = Yt.lx / 2 + 0.3 + Ei,
     r = Yt.lz / 2 + 0.3 + Ei;

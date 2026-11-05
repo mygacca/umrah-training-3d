@@ -200,3 +200,34 @@ function createSnapLatch() {
     return 0;
   };
 }
+
+// زر في الصفحة يعمل بلمسة الإصبع نفسها (pointerdown)، لا بـ click:
+// المتصفح لا يرسل click للمسة إصبع ثانٍ والإبهام على العصا، فكانت أزرار الدوران والهرولة لا تستجيب أثناء المشي.
+// repeat: يتكرر ما دام الإصبع على الزر (الدوران على دفعات). وclick من لوحة المفاتيح (detail = 0) يعمل كما هو.
+function createPressButton(el, fn, { repeat = 0 } = {}) {
+  let timer = 0;
+  let id = null;
+  const stop = (e) => {
+    if (e && e.pointerId !== id) return;
+    id = null;
+    clearTimeout(timer);
+    el.classList.remove("pressed");
+  };
+  el.addEventListener("pointerdown", (e) => {
+    if (id !== null) return;
+    e.preventDefault();
+    id = e.pointerId;
+    el.setPointerCapture?.(e.pointerId);
+    el.classList.add("pressed");
+    if (navigator.vibrate) navigator.vibrate(8);
+    fn();
+    if (repeat) {
+      const again = () => (fn(), (timer = setTimeout(again, repeat)));
+      timer = setTimeout(again, repeat * 1.5);
+    }
+  });
+  el.addEventListener("pointerup", stop);
+  el.addEventListener("pointercancel", stop);
+  el.addEventListener("lostpointercapture", stop);
+  el.addEventListener("click", (e) => e.detail === 0 && fn());
+}

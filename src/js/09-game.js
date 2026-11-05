@@ -1,5 +1,6 @@
 function Pd({ world: i, hud: t, player: e }) {
-  let n = { gender: "m", stage: "intro", sub: "", t0: 0, clock: 0 },
+  // tawafKind: "umrah" (الطواف الأول)، أو "ifadah" و"wada" في الحج (09-hajj.js): لا اضطباع ولا رمل فيهما
+  let n = { gender: "m", stage: "intro", sub: "", t0: 0, clock: 0, tawafKind: "umrah" },
     s = jc("m"),
     r,
     a,
@@ -45,7 +46,10 @@ function Pd({ world: i, hud: t, player: e }) {
       A = -Math.sin(Yr.phi) * Yr.r;
     return [I, A];
   }
+  // نص بطاقة بحسب الطواف: toStartHajj وatStartHajj لطواف الإفاضة والوداع
+  let K = (I) => (n.tawafKind !== "umrah" && s[I + "Hajj"]) || s[I];
   function b(I, A = "") {
+    if (n.onStage && n.onStage(I, A)) return; // الحج يتولى ما بعد الطواف (09-hajj.js)
     switch (((n.stage = I), (n.sub = A), (l = null), (c = ""), I)) {
       case "ihram": {
         t.setCounter({ mode: null }),
@@ -89,12 +93,12 @@ function Pd({ world: i, hud: t, player: e }) {
     }
   }
   (n.start = (I) => {
-    (n.gender = I), (s = jc(I)), u(), (n.clock = 0);
+    (n.gender = I), (s = jc(I)), u(), (n.clock = 0), (n.tawafKind = "umrah");
     let [A, L] = p();
     e.teleport(A, L, -A, -L), b("ihram", "niyyah");
   }),
     (n.jump = (I) => {
-      if ((w++, u(), t.setVeil(""), t.fadeTo(0), I === "ihram")) return n.start(n.gender);
+      if ((w++, u(), (n.tawafKind = "umrah"), t.setVeil(""), t.fadeTo(0), I === "ihram")) return n.start(n.gender);
       if (I === "tawaf") {
         let L = we - 0.28;
         e.teleport(Math.cos(L) * 14, -Math.sin(L) * 14, -Math.cos(we), Math.sin(we)), b("toStart");
@@ -107,6 +111,12 @@ function Pd({ world: i, hud: t, player: e }) {
           ? ((r.valid = 7), e.teleport(dt.xc - 3, dt.safaZone + 6, 0, -1), b("toSafa"))
           : I === "tahallul" &&
             ((r.valid = 7), (a.lap = 7), e.teleport(dt.xc - 3, dt.marwaZone - 5, 0, 1), b("tahallul"));
+    }),
+    // طواف جديد من مدخل المسجد: الإفاضة أو الوداع في الحج. عدّادات الطواف تبدأ من الصفر
+    (n.beginTawaf = (I) => {
+      w++, u(), (n.tawafKind = I), t.setVeil(""), t.fadeTo(0);
+      let [A, L] = p();
+      e.teleport(A, L, -A, -L), b("toStart");
     }),
     (n.fastToSafa = () => {
       t.fadeTo(1),
@@ -202,10 +212,10 @@ function Pd({ world: i, hud: t, player: e }) {
       }
       r.takbirWindow = 7;
     }
-    n.gender === "m" && r.valid < 3 && e.moving && ((o.ramalMove += A), e.isJogging() && (o.ramalT += A));
+    n.gender === "m" && r.valid < 3 && n.tawafKind === "umrah" && e.moving && ((o.ramalMove += A), e.isJogging() && (o.ramalT += A));
     let H = (((L - we) % le) + le) % le,
       V = y(H),
-      Q = n.gender === "m" && r.valid < 3,
+      Q = n.gender === "m" && r.valid < 3 && n.tawafKind === "umrah",
       G = `${V}|${Q}`;
     if (G !== c) {
       c = G;
@@ -357,8 +367,8 @@ function Pd({ world: i, hud: t, player: e }) {
             let T = l === null;
             (l = L),
               L
-                ? (v(s.atStart), t.setAction(s.atStart.action, !0))
-                : (v(s.toStart, { speak: T }), t.setAction(s.toStart.hint, !1));
+                ? (v(K("atStart")), t.setAction(K("atStart").action, !0))
+                : (v(K("toStart"), { speak: T }), t.setAction(K("toStart").hint, !1));
           }
           break;
         }
