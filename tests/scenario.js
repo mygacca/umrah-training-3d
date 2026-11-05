@@ -695,6 +695,165 @@ function runUmrah(mode) {
         assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
       });
 
+    // الحج بالتمتّع (09-hajj.js). في الحاسوب والجوال كاملًا من القائمة: من تحلّل العمرة إلى طواف الوداع،
+    // ومعه الأخطاء التي يُنبَّه عليها: الخروج من عرفة قبل الغروب، ورمي غير العقبة يوم النحر، والرمي بغير ترتيب.
+    // وفي علبة VR والنظارة: رمي جمرة العقبة بطريقة الضغط فيهما
+    const front = (z) => [0, z + 4.6 + 2]; // أمام الحوض من جهة الخيام (front في 09-hajj.js)
+    const JAMARAT = { sughra: -20, wusta: -45, aqaba: -75 }; // MINA_JAMARAT في 03-mashair.js
+    const walkTo = async (pt) => {
+      const p = await pos();
+      await D.walkWorld(line([p.x, p.z], pt));
+    };
+    const hajjStep = (step) => page.waitForFunction((s) => window.__umrah.hajj.step === s && !window.__umrah.hajj.busy, step, { timeout: 60000 });
+    const stone = async (n = 7) => {
+      for (let i = 0; i < n; i++) await D.act('ارمِ');
+    };
+    // سبعة أشواط من الحجر الأسود بلا أخطاء، والتكبير بعد كل شوط
+    const tawaf7 = async () => {
+      await D.walkLocal([localAt(PSI_BLACK - 0.4, R)]);
+      await D.walkLocal(arc(PSI_BLACK - 0.4, PSI_BLACK - 0.03));
+      await D.act('أشِر');
+      let psi = PSI_BLACK - 0.03;
+      for (let k = 1; k <= 7; k++) {
+        await D.walkLocal(arc(psi, (psi = PSI_BLACK + 2 * Math.PI * k + 0.05)));
+        if (k < 7) await D.act('الله أكبر');
+      }
+      assert.equal(await stage(), 'toMaqam');
+      const target = await page.evaluate(() => window.__umrah.hud.model.target);
+      const p = await pos();
+      await D.walkWorld(line([p.x, p.z], target));
+      await D.act('صلِّ ركعتين');
+    };
+    test(mode === 'desktop' || mode === 'mobile' ? 'الحج بالتمتّع: من تحلّل العمرة إلى طواف الوداع' : 'الحج: رمي جمرة العقبة يوم النحر', async () => {
+      if (mode === 'cardboard' || mode === 'xr') {
+        await page.evaluate(() => window.__umrah.hajj.jump('nahr'));
+        await hajjStep('aqaba');
+        assert.deepEqual(await page.evaluate(() => [window.__umrah.world.haramRoot.visible, window.__umrah.mashair.site.key]), [false, 'mina']);
+        await walkTo(front(JAMARAT.aqaba));
+        await stone();
+        await D.act('ذُبح الهدي');
+        assert.equal((await page.evaluate(() => window.__umrah.hajj.stats())).aqaba, 7);
+        assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
+        return;
+      }
+      const tap = (sel) => (M.touch ? page.tap(sel) : page.click(sel));
+      const menu = () => (mode === 'desktop' ? page.keyboard.press('Escape') : tap('#menuBtn'));
+      // من الملخص السابق: «الحج» من القائمة يعيد التدريب، ثم «التحلّل» لتنتهي العمرة سريعًا
+      await tap('#againBtn');
+      await menu();
+      await tap('[data-kind-switch="hajj"]');
+      await menu();
+      await tap('[data-jump="tahallul"]');
+      assert.equal(await page.evaluate(() => [window.__umrah.hajj.enabled, window.__umrah.hud.model.railList.length].join()), 'true,7');
+      await D.act('حلقتُ أو قصّرتُ');
+      // بعد تحلّل العمرة: يوم التروية، لا ملخص العمرة
+      await hajjStep('niyyah');
+      assert.equal(await page.isVisible('#summary'), false);
+      await D.act('انوِ الحج');
+      await D.act('لبّيك');
+      await D.act('انطلق إلى منى');
+      await hajjStep('minaNight');
+      assert.equal(await page.evaluate(() => window.__umrah.world.haramRoot.visible), false, 'المسجد الحرام ظاهر في منى');
+      await D.act('بِت بمنى');
+      await D.act('انطلق إلى عرفة');
+      // عرفة: الزر لا يضيء خارج الحدود، والخروج منها قبل الغروب يُنبَّه عليه
+      await hajjStep('enterArafah');
+      assert.equal(await page.evaluate(() => window.__umrah.hud.model.action.enabled), false, 'الوقوف متاح خارج حدود عرفة');
+      if (mode === 'desktop') {
+        // ميزانية الرسم في عرفة دون ميزانية المسجد الحرام
+        const m = await page.evaluate(() => window.__umrah.quality.measure(window.__umrah.scene, window.__umrah.camera));
+        if (process.env.UMRAH_DEBUG) console.error('arafat budget', JSON.stringify(m));
+        assert.ok(m.calls <= 98 && m.triangles <= 119000, `ميزانية عرفة ${JSON.stringify(m)}`);
+      }
+      await walkTo([0, 40]);
+      await D.act('قف بعرفة');
+      await walkTo([0, 64]);
+      await page.waitForFunction(() => window.__umrah.hajj.stats().outArafah === 1, null, { timeout: 30000 });
+      assert.ok((await toasts()).some((t) => t.kind.includes('warn') && t.text.includes('حدود عرفة')));
+      await walkTo([0, 40]);
+      await page.evaluate(() => {
+        for (let i = 0; i < 400 && window.__umrah.hajj.step === 'stand'; i++) window.__umrah.step(1 / 30);
+      });
+      // مزدلفة
+      await D.act('انفر إلى مزدلفة');
+      await D.act('صلِّ المغرب والعشاء');
+      await hajjStep('pebbles');
+      await walkTo([24, 24]);
+      await D.act('التقط الحصى');
+      await D.act('بِت حتى الفجر');
+      await hajjStep('mashar');
+      await walkTo([0, -41]);
+      await D.act('اذكر الله');
+      await D.act('انطلق إلى منى');
+      // يوم النحر: رمي الوسطى خطأ لا يُحتسب، ثم العقبة سبعًا
+      await hajjStep('aqaba');
+      await walkTo([0, -51]);
+      await D.act('ارمِ');
+      assert.equal((await page.evaluate(() => window.__umrah.hajj.stats())).wrongNahr, 1);
+      await walkTo(front(JAMARAT.aqaba));
+      await stone();
+      await D.act('ذُبح الهدي');
+      await D.act('حلقتُ أو قصّرتُ');
+      await D.act('انطلق إلى مكة');
+      // طواف الإفاضة ثم سعي الحج، بمنطق العمرة نفسه
+      await page.waitForFunction(() => window.__umrah.game.stage === 'toStart', null, { timeout: 30000 });
+      assert.equal(await page.evaluate(() => window.__umrah.world.haramRoot.visible), true);
+      await tawaf7();
+      await page.waitForFunction(() => window.__umrah.game.stage === 'toSafa', null, { timeout: 15000 });
+      await page.waitForFunction(() => !!window.__umrah.hud.model.cardBtn);
+      await D.press('secondary');
+      await D.act('ابدأ السعي');
+      const toMarwa = await page.evaluate(() => window.__umrah.hud.model.target);
+      for (let lap = 1; lap <= 7; lap++) {
+        const p = await pos();
+        await D.walkWorld(line([toMarwa[0] - 3, p.z], [toMarwa[0] - 3, lap % 2 ? toMarwa[1] - 1 : 20]));
+        if (lap < 7) await D.act('ادع');
+      }
+      await hajjStep('backToMina');
+      await D.act('ارجع إلى منى');
+      await D.act('بِت بمنى');
+      // أيام التشريق: الصغرى ثم الوسطى ثم العقبة، والدعاء بعد الأوليين. وفي الثاني عشر رمي بغير ترتيب أولًا
+      for (const day of [11, 12]) {
+        await hajjStep('stoning');
+        assert.equal((await page.evaluate(() => window.__umrah.hajj.stats())).day, day);
+        if (day === 12) {
+          await walkTo(front(JAMARAT.wusta));
+          await D.act('ارمِ');
+          assert.equal((await page.evaluate(() => window.__umrah.hajj.stats())).orderErr, 1);
+        }
+        for (const k of ['sughra', 'wusta', 'aqaba']) {
+          await walkTo(front(JAMARAT[k]));
+          await stone();
+          if (k !== 'aqaba') await D.act('ادعُ');
+        }
+        if (day === 11) await D.act('بِت بمنى');
+      }
+      await D.act('تعجّل');
+      await D.act('انطلق إلى مكة');
+      await page.waitForFunction(() => window.__umrah.game.stage === 'toStart', null, { timeout: 30000 });
+      await tawaf7();
+      await page.waitForFunction(() => window.__umrah.game.stage === 'done', null, { timeout: 15000 });
+      const rows = Object.fromEntries(
+        await page.$$eval('#sumRows div', (ds) => ds.map((d) => [d.querySelector('dt').textContent, d.querySelector('dd').textContent])),
+      );
+      if (process.env.UMRAH_DEBUG) console.error('hajj', JSON.stringify(rows));
+      assert.equal(rows['عمرة التمتّع'], '٧ من ٧ طواف، و٧ من ٧ سعي');
+      assert.equal(rows['الوقوف بعرفة حتى الغروب'], 'تمّ');
+      assert.equal(rows['الخروج من حدود عرفة قبل الغروب'], '١');
+      assert.equal(rows['المبيت بمزدلفة والذكر عند المشعر الحرام'], 'تمّ');
+      assert.equal(rows['رمي جمرة العقبة يوم النحر'], '٧ من ٧');
+      assert.equal(rows['الهدي، والحلق أو التقصير'], 'تمّ');
+      assert.equal(rows['طواف الإفاضة وسعي الحج'], '٧ من ٧، و٧ من ٧');
+      assert.equal(rows['رمي الجمرات أيام التشريق'], '٤٢ من ٤٢');
+      assert.equal(rows['رمي في غير موضعه أو بغير ترتيب'], '٢');
+      assert.equal(rows['الدعاء بعد الصغرى والوسطى'], '٤ من ٤');
+      assert.equal(rows['طواف الوداع'], '٧ من ٧');
+      assert.equal(rows['تنبيهات الطواف: الحِجر وعكس الاتجاه'], '٠');
+      assert.equal(await page.textContent('#sumTitle'), 'تمّ الحج التدريبي');
+      assert.match(await page.textContent('#sumNote'), /راجع التنبيهات/);
+      assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
+    });
+
     test('لا يُقرأ نص شرعي بالصوت الآلي', async () => {
       const { spoken, sacred } = await page.evaluate(() => ({ spoken: window.__spoken, sacred: [...window.__sacred] }));
       assert.ok(spoken.length > 10, 'الصوت المزيّف لم يُستعمل');
