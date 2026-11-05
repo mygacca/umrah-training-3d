@@ -29,6 +29,10 @@ function createHud({ camera }) {
     toast: { msg: "", kind: "info", until: 0 },
     target: null,
     veil: "",
+    veilTitle: "",
+    railList: null, // مراحل الحج (HAJJ_RAIL) بدل مراحل العمرة
+    railStep: 0,
+    site: null, // موقع من مشاعر الحج (03-mashair.js) أو null في المسجد الحرام
   };
   const hud = { model: s, onCardBtn: null, onChange: null, time: 0 };
   const changed = () => hud.onChange && hud.onChange();
@@ -100,9 +104,25 @@ function createHud({ camera }) {
     changed();
   };
   hud.setTarget = (t) => (s.target = t);
-  hud.setVeil = (text) => {
+  hud.setVeil = (text, title = "") => {
+    s.veilTitle = title;
     s.veil = text || "";
     dom.veilText.textContent = s.veil;
+    changed();
+  };
+  // شريط الحج: يُبنى من جديد في المرآة النصية
+  hud.setRail = (list, step = 0) => {
+    s.railList = list;
+    s.railStep = step;
+    dom.rail.innerHTML = (list || Ti).map((t, i) => `<li data-k="${t.k}">${De(i + 1)}. ${t.name}</li>`).join("");
+    hud.setRite(s.rite);
+  };
+  hud.setRailStep = (step) => {
+    s.railStep = step;
+    hud.setRite(s.rite);
+  };
+  hud.setSite = (site) => {
+    s.site = site;
     changed();
   };
   hud.setJog = (on) => {

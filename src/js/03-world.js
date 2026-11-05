@@ -492,7 +492,7 @@ function Ed(i, t) {
         let it = 1 + 0.12 * Math.sin(ht * 3.2);
         j.scale.set(it, it, 1), (tt.material.opacity = 0.1 + 0.05 * Math.sin(ht * 3.2));
       }
-      crowds.update(q, J);
+      e.crowdsPaused || crowds.update(q, J); // متوقفة واللاعب في مشاعر الحج (09-hajj.js)
     }),
     (e.corners = Ln),
     e

@@ -23,6 +23,15 @@
       </div>
     </div>
 
+    <div class="who">
+      <span id="kindLabel">التدريب على</span>
+      <div class="seg" role="radiogroup" aria-labelledby="kindLabel">
+        <button type="button" role="radio" aria-checked="true" data-kind="umrah">العمرة</button>
+        <button type="button" role="radio" aria-checked="false" data-kind="hajj">الحج (تمتّع)</button>
+      </div>
+    </div>
+    <p class="fine hajj-only">حج التمتّع: عمرة كاملة، ثم أيام الحج في منى وعرفة ومزدلفة، والرمي، وطواف الإفاضة والوداع. نصوص الحج مسودة تحتاج مراجعة مختص.</p>
+
     <div class="who mode-pick">
       <span id="modeLabel">طريقة التدريب</span>
       <div class="seg modes" role="radiogroup" aria-labelledby="modeLabel">
@@ -132,6 +141,20 @@
       <button type="button" data-switch="mobile">الجوال</button>
       <button type="button" data-switch="cardboard">علبة VR</button>
       <button type="button" data-switch="desktop">الحاسوب</button>
+    </div>
+    <h3>نوع التدريب</h3>
+    <div class="jumps choices">
+      <button type="button" data-kind-switch="umrah">العمرة</button>
+      <button type="button" data-kind-switch="hajj">الحج (تمتّع)</button>
+    </div>
+    <h3 class="hajj-only">الانتقال إلى يوم من الحج</h3>
+    <div class="jumps hajj-only">
+      <button type="button" data-hajj-jump="tarwiyah">التروية</button>
+      <button type="button" data-hajj-jump="arafah">عرفة</button>
+      <button type="button" data-hajj-jump="muzdalifah">مزدلفة</button>
+      <button type="button" data-hajj-jump="nahr">النحر</button>
+      <button type="button" data-hajj-jump="tashreeq">التشريق</button>
+      <button type="button" data-hajj-jump="wada">الوداع</button>
     </div>
     <h3>الانتقال إلى منسك</h3>
     <div class="jumps">

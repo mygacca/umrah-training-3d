@@ -91,6 +91,8 @@ function createRouteGuide({ game, hud, laneAt }) {
       return around(x, z, g.sense, g.rHold);
     }
     const T = hud.model.target;
+    // في مشاعر الحج (SITE): إلى الهدف في خط مستقيم، والتصادم يدور حول الحوض والخيام
+    if (SITE) return stage === "hajj" && T && Math.hypot(T[0] - x, T[1] - z) >= 0.8 ? unit(T[0] - x, T[1] - z) : null;
     if (!GUIDE_STAGES[stage] || !T) return null;
     return toTarget(x, z, T[0], T[1]);
   };

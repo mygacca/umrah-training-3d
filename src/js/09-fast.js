@@ -7,7 +7,7 @@
 var FAST_STEP = 0.5; // متر لكل خطوة من المشي المسرَّع
 var FAST_FADE_MS = 380;
 
-function createFastLearning({ game, hud, player, world }) {
+function createFastLearning({ game, hud, player, world, hajj }) {
   const f = { enabled: false, busy: false };
   const guide = createRouteGuide({ game, hud, laneAt: world.crowds.laneAt });
 
@@ -15,6 +15,7 @@ function createFastLearning({ game, hud, player, world }) {
   f.label = () => {
     if (!f.enabled || f.busy) return null;
     const L = jc(game.gender).fast;
+    if (game.stage === "hajj") return hajj.walking() ? L.toTarget : null; // في مشاعر الحج: إلى الجمرة، أو حدود عرفة...
     const p = player.getPos();
     if (game.stage === "toStart") return Zc(p.x, p.z) ? null : L.toStart;
     if (game.stage === "toMaqam") return $c(p.x, p.z) ? null : L.toMaqam;

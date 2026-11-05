@@ -149,6 +149,7 @@ button:disabled { cursor: default; }
   background: var(--glass);
   color: var(--ivory);
 }
+body:not(.kind-hajj) .hajj-only,
 body:not([data-mode="mobile"]) .mobile-only,
 body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
 #joy {
@@ -320,6 +321,15 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       </div>
     </div>
 
+    <div class="who">
+      <span id="kindLabel">التدريب على</span>
+      <div class="seg" role="radiogroup" aria-labelledby="kindLabel">
+        <button type="button" role="radio" aria-checked="true" data-kind="umrah">العمرة</button>
+        <button type="button" role="radio" aria-checked="false" data-kind="hajj">الحج (تمتّع)</button>
+      </div>
+    </div>
+    <p class="fine hajj-only">حج التمتّع: عمرة كاملة، ثم أيام الحج في منى وعرفة ومزدلفة، والرمي، وطواف الإفاضة والوداع. نصوص الحج مسودة تحتاج مراجعة مختص.</p>
+
     <div class="who mode-pick">
       <span id="modeLabel">طريقة التدريب</span>
       <div class="seg modes" role="radiogroup" aria-labelledby="modeLabel">
@@ -429,6 +439,20 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       <button type="button" data-switch="mobile">الجوال</button>
       <button type="button" data-switch="cardboard">علبة VR</button>
       <button type="button" data-switch="desktop">الحاسوب</button>
+    </div>
+    <h3>نوع التدريب</h3>
+    <div class="jumps choices">
+      <button type="button" data-kind-switch="umrah">العمرة</button>
+      <button type="button" data-kind-switch="hajj">الحج (تمتّع)</button>
+    </div>
+    <h3 class="hajj-only">الانتقال إلى يوم من الحج</h3>
+    <div class="jumps hajj-only">
+      <button type="button" data-hajj-jump="tarwiyah">التروية</button>
+      <button type="button" data-hajj-jump="arafah">عرفة</button>
+      <button type="button" data-hajj-jump="muzdalifah">مزدلفة</button>
+      <button type="button" data-hajj-jump="nahr">النحر</button>
+      <button type="button" data-hajj-jump="tashreeq">التشريق</button>
+      <button type="button" data-hajj-jump="wada">الوداع</button>
     </div>
     <h3>الانتقال إلى منسك</h3>
     <div class="jumps">
@@ -4723,7 +4747,17 @@ var Vector2 = gt,
   SRGBColorSpace = We,
   BackSide = Oe,
   InstancedMesh = kn,
-  InstancedBufferAttribute = vs;
+  InstancedBufferAttribute = vs,
+  Object3D = Xe,
+  BoxGeometry = Me,
+  CircleGeometry = Oi,
+  ConeGeometry = Bi,
+  TorusGeometry = ni,
+  IcosahedronGeometry = br,
+  Sprite = ys,
+  SpriteMaterial = Ni,
+  MeshStandardMaterial = Rn,
+  DoubleSide = qe;
 // الأنسجة والمواد (الطبقة 5 من docs/realism-plan.md). دوال فقط، يستدعيها 11-main.js بعد بناء المشهد.
 // كل الأنسجة تُرسم على canvas عند التحميل، فلا يزيد الملف. والقاعدة في three.js:
 // roughnessMap تقرأ القناة الخضراء، وmetalnessMap الزرقاء، فنسيج واحد (ORM) يخدم الاثنين.
@@ -5322,7 +5356,11 @@ function qc(i, t) {
   let e = Xc(i, t);
   return e.zz > 0 && e.r < 0.93;
 }
+// مشاعر الحج (03-mashair.js): حين يكون اللاعب في منى أو عرفة أو مزدلفة فالمشي والتصادم من الموقع لا من المسجد الحرام.
+// SITE = { walk(x, z) → هل يُمشى هنا، collide(x, z) → [x, z] } أو null في المسجد الحرام
+var SITE = null;
 function zs(i, t) {
+  if (SITE) return SITE.walk(i, t);
   if (Math.hypot(i, t) < pe.walk) return !0;
   let e = dt.pass;
   return (
@@ -5332,6 +5370,7 @@ function zs(i, t) {
 }
 var Ei = 0.35;
 function Yc(i, t) {
+  if (SITE) return SITE.collide(i, t);
   let [e, n] = ol(i, t),
     s = Yt.lx / 2 + 0.3 + Ei,
     r = Yt.lz / 2 + 0.3 + Ei;
@@ -5755,7 +5794,8 @@ function createAtmosphere({ scene, renderer, world }) {
     light.visible = T.night;
   };
 
-  atm.setTime = (name) => {
+  // save = false: وقت يفرضه منسك (الليل في مزدلفة) فلا يُحفظ اختيارًا للمستخدم
+  atm.setTime = (name, { save = true } = {}) => {
     if (!TIMES_OF_DAY[name]) name = DEFAULT_TIME;
     const T = TIMES_OF_DAY[name];
     atm.time = name;
@@ -5785,9 +5825,12 @@ function createAtmosphere({ scene, renderer, world }) {
     world.crowds.setLight({ impostor: T.night ? 0.62 : 0.95, blob: T.night ? 0.6 : 1 });
     regenerateEnvironment();
     bake();
-    try {
-      localStorage.setItem("umrah.time", name);
-    } catch {}
+    if (save) {
+      atm.chosen = name;
+      try {
+        localStorage.setItem("umrah.time", name);
+      } catch {}
+    }
     if (atm.onChange) atm.onChange(name);
   };
   atm.setResolution = (res) => {
@@ -6577,6 +6620,399 @@ function addLandmarkDetail(scene, world) {
   world.landmarkDetail = added;
   return added;
 }
+// مشاعر الحج (09-hajj.js): منى بخيامها والجمرات الثلاث، وعرفة بحدودها وجبل الرحمة، ومزدلفة والمشعر الحرام. دوال فقط.
+// مبسّطة وكلها حول الأصل نفسه: حين يدخل اللاعب موقعًا يُخفى المسجد الحرام كله (world.haramRoot) ويظهر الموقع،
+// ويأخذ SITE في 02-layout.js المشي والتصادم. والمسافات مصغّرة كالمسجد:
+//   بين الجمرات 25 و30 م (في الواقع نحو 150 و250 م)، وحدود عرفة دائرة نصف قطرها 55 م.
+var MINA_JAMARAT = [
+  { k: "sughra", name: "الجمرة الصغرى", x: 0, z: -20 },
+  { k: "wusta", name: "الجمرة الوسطى", x: 0, z: -45 },
+  { k: "aqaba", name: "جمرة العقبة", x: 0, z: -75 },
+];
+var MINA_TENT_X = [-55, -45, -35, -25, 25, 35, 45, 55];
+var JAMRAH_BASIN = 4.6; // نصف قطر الحوض
+var THROW_RANGE = 8; // يُرمى من هذا البعد عن مركز الحوض أو أقرب
+var ARAFAT_R = 55;
+var ARAFAT_HILL = { x: 30, z: -32, r: 19 };
+var MUZ_PEBBLES = { x: 24, z: 24, r: 9 };
+var MUZ_MASHAR = { x: 0, z: -58, w: 40, d: 22, zone: 26 }; // المسجد، ومنطقة الوقوف أمامه
+
+function createMashair({ scene, world }) {
+  const inRect = (x, z, r) => x >= r[0] && x <= r[1] && z >= r[2] && z <= r[3];
+  const outOfCircle = (x, z, cx, cz, R) => {
+    const dx = x - cx;
+    const dz = z - cz;
+    const d = Math.hypot(dx, dz);
+    return d >= R ? [x, z] : d < 1e-4 ? [cx + R, cz] : [cx + (dx / d) * R, cz + (dz / d) * R];
+  };
+  const outOfBox = (x, z, cx, cz, hx, hz) => {
+    const ox = hx - Math.abs(x - cx);
+    const oz = hz - Math.abs(z - cz);
+    if (ox <= 0 || oz <= 0) return [x, z];
+    return ox < oz ? [cx + Math.sign(x - cx || 1) * hx, z] : [x, cz + Math.sign(z - cz || 1) * hz];
+  };
+  const rnd = Xr(311);
+  const mat = (color, o = {}) => new MeshStandardMaterial({ color, roughness: 0.9, ...o });
+
+  // ——— ما تشترك فيه المواقع ———
+  function ground(color, radius = 420) {
+    const g = new CircleGeometry(radius, 48);
+    g.rotateX(-Math.PI / 2);
+    return new Mesh(g, mat(color, { roughness: 0.97 }));
+  }
+  // جبال مكة حول الوادي: مخاريط منخفضة المضلعات
+  function mountains(seed) {
+    const r = Xr(seed);
+    const n = 34;
+    const m = new InstancedMesh(new ConeGeometry(1, 1, 6), mat("#8b6f55", { flatShading: true }), n);
+    const o = new Object3D();
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * le + r() * 0.15;
+      const d = 240 + r() * 140;
+      const h = 35 + r() * 80;
+      o.position.set(Math.cos(a) * d, h / 2 - 2, Math.sin(a) * d);
+      o.scale.set(45 + r() * 55, h, 45 + r() * 55);
+      o.rotation.y = r() * le;
+      o.updateMatrix();
+      m.setMatrixAt(i, o.matrix);
+    }
+    return m;
+  }
+  // حجاج واقفون: هيئات الحشود (03-crowds.js) بلا مشي. الرجال بالإحرام مغطّو الكتفين: لا اضطباع خارج الطواف
+  const geos = [manGeometry(false), womanGeometry()];
+  const crowdMat = crowdMaterial();
+  const WOMEN = ["#1d1d22", "#f1eee6", "#3b3a40", "#6b5a4a", "#e8e1d2", "#24324a"];
+  function pilgrims(n, place, { raise = 0 } = {}) {
+    const g = new Group();
+    const o = new Object3D();
+    const col = new Color();
+    const counts = [Math.round(n * 0.6), n - Math.round(n * 0.6)];
+    geos.forEach((geo, kind) => {
+      const k = counts[kind];
+      const m = new InstancedMesh(geo.clone(), crowdMat, k);
+      const anim = new InstancedBufferAttribute(new Float32Array(k * 4), 4);
+      for (let i = 0; i < k; i++) {
+        const [x, z, yaw] = place(rnd);
+        o.position.set(x, 0, z);
+        o.rotation.y = yaw;
+        o.scale.setScalar(0.92 + rnd() * 0.16);
+        o.updateMatrix();
+        m.setMatrixAt(i, o.matrix);
+        m.setColorAt(i, kind ? col.set(WOMEN[Math.floor(rnd() * WOMEN.length)]) : col.setRGB(0.95, 0.94, 0.9).multiplyScalar(0.9 + rnd() * 0.1));
+        anim.setXYZW(i, rnd() * le, 0, 1, rnd() < raise ? 0.85 : 0);
+      }
+      m.geometry.setAttribute("iAnim", anim);
+      g.add(m);
+    });
+    return g;
+  }
+  let labelsBuilt = false;
+  const labelSpecs = [];
+  // اللافتات تُبنى عند أول دخول إلى المواقع، بعد تحميل الخطوط
+  function label(group, text, x, y, z, h = 1.4, sub = "") {
+    labelSpecs.push({ group, text, x, y, z, h, sub, sprite: null });
+  }
+  function buildLabels() {
+    if (labelsBuilt) return;
+    labelsBuilt = true;
+    for (const L of labelSpecs) {
+      const { texture, aspect } = _d(L.text, { sub: L.sub });
+      const s = new Sprite(new SpriteMaterial({ map: texture, depthWrite: false, transparent: true, fog: false }));
+      s.scale.set(L.h * aspect, L.h, 1);
+      s.position.set(L.x, L.y, L.z);
+      s.renderOrder = 5;
+      L.group.add(s);
+      L.sprite = s;
+    }
+  }
+  function signPost(group, x, z, color = "#2f7d5a") {
+    const p = new Mesh(new BoxGeometry(0.18, 3.2, 0.18), mat("#d8d2c4"));
+    p.position.set(x, 1.6, z);
+    const b = new Mesh(new BoxGeometry(2.6, 0.9, 0.12), mat(color, { emissive: color, emissiveIntensity: 0.25 }));
+    b.position.set(x, 3.1, z);
+    b.lookAt(0, 3.1, 0);
+    group.add(p, b);
+  }
+
+  // ——— منى: الخيام شمال الطريق، والجمرات جنوبه ———
+  const mina = (() => {
+    const g = new Group();
+    g.add(ground("#cdb995"), mountains(41));
+    const road = new Mesh(new PlaneGeometry(26, 222), mat("#77706a", { roughness: 0.95 }));
+    road.rotation.x = -Math.PI / 2;
+    road.position.set(0, 0.02, 21);
+    const plaza = new Mesh(new PlaneGeometry(38, 84), mat("#d9d3c6", { roughness: 0.6 }));
+    plaza.rotation.x = -Math.PI / 2;
+    plaza.position.set(0, 0.03, -48);
+    g.add(road, plaza);
+    // الخيام: صفوف بيضاء بممرات بينها
+    const tentGeo = Bs([new BoxGeometry(6, 2.6, 6).translate(0, 1.3, 0), new ConeGeometry(4.3, 2, 4).rotateY(Math.PI / 4).translate(0, 3.6, 0)]);
+    const tents = [];
+    for (const x of MINA_TENT_X) for (let z = 26; z <= 116; z += 10) tents.push([x, z]);
+    const tm = new InstancedMesh(tentGeo, mat("#f4f2ec", { roughness: 0.75 }), tents.length);
+    const o = new Object3D();
+    tents.forEach(([x, z], i) => (o.position.set(x, 0, z), o.updateMatrix(), tm.setMatrixAt(i, o.matrix)));
+    g.add(tm);
+    // الجمرات: حوض بجدار منخفض، وفي وسطه جدار الشاخص
+    const basins = Bs(
+      MINA_JAMARAT.map((j) => new CylinderGeometry(JAMRAH_BASIN, JAMRAH_BASIN, 1.1, 32, 1, true).translate(j.x, 0.55, j.z)),
+    );
+    const rims = Bs(MINA_JAMARAT.map((j) => new TorusGeometry(JAMRAH_BASIN, 0.14, 6, 40).rotateX(Math.PI / 2).translate(j.x, 1.1, j.z)));
+    const pillars = Bs(MINA_JAMARAT.map((j) => new BoxGeometry(5.4, 6, 0.9).translate(j.x, 3, j.z)));
+    const floors = Bs(MINA_JAMARAT.map((j) => new CircleGeometry(JAMRAH_BASIN, 32).rotateX(-Math.PI / 2).translate(j.x, 0.05, j.z)));
+    g.add(
+      new Mesh(basins, mat("#b9b2a5", { side: DoubleSide })),
+      new Mesh(rims, mat("#8c857a")),
+      new Mesh(pillars, mat("#a59d90")),
+      new Mesh(floors, mat("#8f8a80")),
+    );
+    for (const j of MINA_JAMARAT) label(g, j.name, j.x, 8, j.z, 1.6);
+    label(g, "خيام منى", -30, 8, 40, 1.8);
+    // حجاج في الطريق وبين الخيام وحول الجمرات
+    g.add(
+      pilgrims(150, (r) => {
+        const near = r() < 0.55;
+        if (near) {
+          const j = MINA_JAMARAT[Math.floor(r() * 3)];
+          const a = r() * le;
+          const d = JAMRAH_BASIN + 2.5 + r() * 9;
+          return [j.x + Math.cos(a) * d, j.z + Math.sin(a) * d, Math.atan2(Math.cos(a), Math.sin(a))];
+        }
+        return [(r() - 0.5) * 22, 10 + r() * 110, r() < 0.5 ? 0 : Math.PI];
+      }),
+    );
+    const walk = (x, z) => inRect(x, z, [-12.5, 12.5, -88, 130]) || inRect(x, z, [-18.5, 18.5, -89, -7]) || inRect(x, z, [-62, 62, 20, 122]);
+    const collide = (x, z) => {
+      for (const j of MINA_JAMARAT) [x, z] = outOfCircle(x, z, j.x, j.z, JAMRAH_BASIN + 0.45);
+      // الخيام على شبكة 10 م: يُدفع اللاعب إلى الممر بينها
+      if (z > 20 && Math.abs(x) > 12) {
+        const gx = Math.round((x - 5) / 10) * 10 + 5;
+        const gz = Math.round((z - 26) / 10) * 10 + 26;
+        if (MINA_TENT_X.includes(gx) && gz >= 26 && gz <= 116) [x, z] = outOfBox(x, z, gx, gz, 3.4, 3.4);
+      }
+      return [x, z];
+    };
+    return {
+      key: "mina",
+      name: "منى",
+      group: g,
+      walk,
+      collide,
+      time: "duha",
+      map: {
+        center: [0, 20],
+        radius: 110,
+        marks: [
+          // ثلاث نقاط متقاربة على الخريطة: اسم واحد لها، عند العقبة
+          ...MINA_JAMARAT.map((j) => ({ x: j.x, z: j.z, r: JAMRAH_BASIN, label: j.k === "wusta" ? "الجمرات" : "", color: "#d9d3c6" })),
+          { x: -30, z: 70, r: 26, label: "الخيام", color: "rgba(246,241,228,0.35)" },
+        ],
+      },
+      // الخيام، ومدخل الجمرات أيام التشريق، ويوم النحر عند جمرة العقبة
+      spawns: { tents: [0, 100, 0, -1], jamarat: [0, 2, 0, -1], nahr: [6, -56, -0.3, -1] },
+    };
+  })();
+
+  // ——— عرفة: سهل بحدود مُعلَّمة، وجبل الرحمة ———
+  const arafat = (() => {
+    const g = new Group();
+    g.add(ground("#d6c098"), mountains(53));
+    // حدود عرفة: حلقة على الأرض ولوحات
+    const ring = new Mesh(new RingGeometry(ARAFAT_R - 0.6, ARAFAT_R + 0.6, 128), new MeshBasicMaterial({ color: "#e0b84a", transparent: true, opacity: 0.85 }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.04;
+    g.add(ring);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * le + 0.3;
+      signPost(g, Math.cos(a) * (ARAFAT_R + 1.5), Math.sin(a) * (ARAFAT_R + 1.5));
+      if (i % 2 === 0) label(g, "حدود عرفة", Math.cos(a) * (ARAFAT_R + 1.5), 5, Math.sin(a) * (ARAFAT_R + 1.5), 1.3);
+    }
+    // جبل الرحمة وشاخصه الأبيض
+    const hill = new Mesh(new ConeGeometry(ARAFAT_HILL.r, 17, 10, 3), mat("#9a7c5e", { flatShading: true }));
+    hill.position.set(ARAFAT_HILL.x, 8.5, ARAFAT_HILL.z);
+    const pillar = new Mesh(new CylinderGeometry(0.55, 0.75, 7, 8), mat("#f2efe8"));
+    pillar.position.set(ARAFAT_HILL.x, 20.5, ARAFAT_HILL.z);
+    g.add(hill, pillar);
+    label(g, "جبل الرحمة", ARAFAT_HILL.x, 27, ARAFAT_HILL.z, 2);
+    // أشجار النيم وظلال
+    const r = Xr(77);
+    const n = 46;
+    const trunks = new InstancedMesh(new CylinderGeometry(0.18, 0.24, 2.6, 6).translate(0, 1.3, 0), mat("#6d5640"), n);
+    const crowns = new InstancedMesh(new IcosahedronGeometry(2.2, 0).translate(0, 3.6, 0), mat("#5f7f45", { flatShading: true }), n);
+    const o = new Object3D();
+    for (let i = 0; i < n; i++) {
+      const a = r() * le;
+      const d = 8 + r() * (ARAFAT_R - 12);
+      o.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+      if (Math.hypot(o.position.x - ARAFAT_HILL.x, o.position.z - ARAFAT_HILL.z) < ARAFAT_HILL.r + 3) o.position.x -= 30;
+      o.scale.setScalar(0.8 + r() * 0.5);
+      o.updateMatrix();
+      trunks.setMatrixAt(i, o.matrix);
+      crowns.setMatrixAt(i, o.matrix);
+    }
+    g.add(trunks, crowns);
+    // الحجاج داخل الحدود، كثير منهم يدعو رافعًا يده
+    g.add(
+      pilgrims(
+        170,
+        (rr) => {
+          let x, z;
+          do {
+            const a = rr() * le;
+            const d = 6 + rr() * (ARAFAT_R - 9);
+            (x = Math.cos(a) * d), (z = Math.sin(a) * d);
+          } while (Math.hypot(x - ARAFAT_HILL.x, z - ARAFAT_HILL.z) < ARAFAT_HILL.r + 1);
+          return [x, z, Math.PI * 0.75 + (rr() - 0.5) * 0.6]; // نحو القبلة تقريبًا
+        },
+        { raise: 0.35 },
+      ),
+    );
+    return {
+      key: "arafat",
+      name: "عرفة",
+      group: g,
+      walk: (x, z) => Math.hypot(x, z) < 95,
+      collide: (x, z) => outOfCircle(x, z, ARAFAT_HILL.x, ARAFAT_HILL.z, ARAFAT_HILL.r * 0.92),
+      time: "asr",
+      inside: (x, z) => Math.hypot(x, z) < ARAFAT_R - 0.5,
+      map: {
+        center: [0, 8],
+        radius: 80,
+        ring: ARAFAT_R,
+        marks: [{ x: ARAFAT_HILL.x, z: ARAFAT_HILL.z, r: ARAFAT_HILL.r, label: "جبل الرحمة", color: "rgba(154,124,94,0.8)" }],
+      },
+      spawns: { road: [0, 78, 0, -1] },
+    };
+  })();
+
+  // ——— مزدلفة: ليلًا، والمشعر الحرام في جهتها ———
+  const muzdalifah = (() => {
+    const g = new Group();
+    g.add(ground("#a39684"), mountains(67));
+    // المشعر الحرام: مسجد بمئذنتين مضيئتين
+    const M = MUZ_MASHAR;
+    const glow = mat("#efe6d2", { emissive: "#ffd9a0", emissiveIntensity: 0.18 });
+    const body = new Mesh(new BoxGeometry(M.w, 9, M.d), glow);
+    body.position.set(M.x, 4.5, M.z);
+    const mins = Bs(
+      [-1, 1].map((s) => new CylinderGeometry(0.9, 1.1, 26, 8).translate(M.x + s * (M.w / 2 - 1), 13, M.z + M.d / 2 - 1)),
+    );
+    g.add(body, new Mesh(mins, glow));
+    label(g, "المشعر الحرام", M.x, 14, M.z + M.d / 2 + 1, 1.8);
+    // مكان الحصى: حصى صغير على الأرض
+    const pr = Xr(91);
+    const pn = 260;
+    const peb = new InstancedMesh(new IcosahedronGeometry(0.07, 0), mat("#7a7064"), pn);
+    const o = new Object3D();
+    for (let i = 0; i < pn; i++) {
+      const a = pr() * le;
+      const d = Math.sqrt(pr()) * MUZ_PEBBLES.r;
+      o.position.set(MUZ_PEBBLES.x + Math.cos(a) * d, 0.04, MUZ_PEBBLES.z + Math.sin(a) * d);
+      o.scale.setScalar(0.7 + pr() * 1.2);
+      o.updateMatrix();
+      peb.setMatrixAt(i, o.matrix);
+    }
+    g.add(peb);
+    label(g, "التقاط الحصى", MUZ_PEBBLES.x, 3.2, MUZ_PEBBLES.z, 1.3);
+    // أعمدة إنارة: رؤوسها تضيء ليلًا
+    const ln = 24;
+    const poles = new InstancedMesh(new CylinderGeometry(0.12, 0.16, 8, 6).translate(0, 4, 0), mat("#5c5a56"), ln);
+    const heads = new InstancedMesh(new SphereGeometry(0.45, 8, 6).translate(0, 8.2, 0), new MeshBasicMaterial({ color: "#ffe3a8" }), ln);
+    for (let i = 0; i < ln; i++) {
+      o.position.set(((i % 6) - 2.5) * 26, 0, (Math.floor(i / 6) - 1.5) * 40);
+      o.scale.setScalar(1);
+      o.updateMatrix();
+      poles.setMatrixAt(i, o.matrix);
+      heads.setMatrixAt(i, o.matrix);
+    }
+    g.add(poles, heads);
+    g.add(pilgrims(110, (r) => [(r() - 0.5) * 140, (r() - 0.5) * 130 + 10, r() * le]));
+    return {
+      key: "muzdalifah",
+      name: "مزدلفة",
+      group: g,
+      walk: (x, z) => inRect(x, z, [-80, 80, -90, 90]),
+      collide: (x, z) => outOfBox(x, z, M.x, M.z, M.w / 2 + 0.4, M.d / 2 + 0.4),
+      time: "night",
+      atPebbles: (x, z) => Math.hypot(x - MUZ_PEBBLES.x, z - MUZ_PEBBLES.z) < MUZ_PEBBLES.r,
+      atMashar: (x, z) => Math.hypot(x - M.x, z - (M.z + M.d / 2)) < M.zone,
+      map: {
+        center: [0, 5],
+        radius: 90,
+        marks: [
+          { x: M.x, z: M.z, r: 14, label: "المشعر", color: "rgba(239,230,210,0.85)" },
+          { x: MUZ_PEBBLES.x, z: MUZ_PEBBLES.z, r: MUZ_PEBBLES.r, label: "الحصى", color: "rgba(122,112,100,0.9)" },
+        ],
+      },
+      spawns: { road: [0, 72, 0, -1] },
+    };
+  })();
+
+  const sites = { mina, arafat, muzdalifah };
+  for (const s of Object.values(sites)) (s.group.visible = false), scene.add(s.group);
+
+  // علامة الهدف في الموقع: حلقة ذهبية تنبض
+  const target = new Mesh(new RingGeometry(1.1, 1.5, 40), new MeshBasicMaterial({ color: "#f0c96a", transparent: true, opacity: 0.85, depthWrite: false }));
+  target.rotation.x = -Math.PI / 2;
+  target.position.y = 0.08;
+  target.visible = false;
+  scene.add(target);
+  // حصاة تُرمى نحو الحوض
+  const pebble = new Mesh(new SphereGeometry(0.09, 8, 6), mat("#6e665c"));
+  pebble.visible = false;
+  scene.add(pebble);
+  const flight = { t: 1, from: new Vector3(), to: new Vector3() };
+
+  const ms = { sites, site: null, onChange: null };
+  // إلى موقع (اسمه)، أو null للعودة إلى المسجد الحرام
+  ms.enter = (key) => {
+    const s = key ? sites[key] : null;
+    if (s) buildLabels();
+    for (const x of Object.values(sites)) x.group.visible = x === s;
+    world.haramRoot.visible = !s;
+    world.crowdsPaused = !!s;
+    world.setLabelsSuppressed(!!s);
+    world.setTarget(null);
+    SITE = s;
+    ms.site = s;
+    target.visible = false;
+    pebble.visible = false;
+    if (ms.onChange) ms.onChange(s);
+  };
+  ms.setTarget = (p) => {
+    target.visible = !!p && !!ms.site;
+    if (p) target.position.set(p[0], 0.08, p[1]);
+  };
+  ms.throwPebble = (from, j) => {
+    flight.from.copy(from);
+    flight.to.set(j.x + (rnd() - 0.5) * 1.6, 0.4, j.z + (rnd() - 0.5) * 1.6);
+    flight.t = 0;
+    pebble.visible = true;
+  };
+  ms.nearestJamrah = (x, z) => {
+    let best = null;
+    for (const j of MINA_JAMARAT) {
+      const d = Math.hypot(x - j.x, z - j.z);
+      if (!best || d < best.d) best = { j, d };
+    }
+    return best;
+  };
+  ms.update = (dt, time) => {
+    if (target.visible) {
+      const k = 1 + 0.12 * Math.sin(time * 3.2);
+      target.scale.set(k, k, 1);
+    }
+    if (flight.t < 1) {
+      flight.t = Math.min(1, flight.t + dt / 0.55);
+      const t = flight.t;
+      pebble.position.lerpVectors(flight.from, flight.to, t);
+      pebble.position.y += Math.sin(t * Math.PI) * 2.2;
+      if (t >= 1) pebble.visible = false;
+    }
+    for (const L of labelSpecs) if (L.sprite) L.sprite.visible = world.showLabels;
+  };
+  return ms;
+}
 var bd = new U(-0.62, 0.52, 0.34).normalize();
 function Se(i, t = {}) {
   return new Rn({ color: i, roughness: 0.85, metalness: 0, ...t });
@@ -7071,7 +7507,7 @@ function Ed(i, t) {
         let it = 1 + 0.12 * Math.sin(ht * 3.2);
         j.scale.set(it, it, 1), (tt.material.opacity = 0.1 + 0.05 * Math.sin(ht * 3.2));
       }
-      crowds.update(q, J);
+      e.crowdsPaused || crowds.update(q, J); // متوقفة واللاعب في مشاعر الحج (09-hajj.js)
     }),
     (e.corners = Ln),
     e
@@ -7110,7 +7546,22 @@ var Ad = [
       "وَاتَّخِذُوا مِن مَّقَامِ إِبْرَاهِيمَ مُصَلًّى",
     safa: "إِنَّ الصَّفَا وَالْمَرْوَةَ مِن شَعَائِرِ اللَّهِ، أَبْدَأُ بِمَا بَدَأَ اللَّهُ بِهِ",
     hill: "اللَّهُ أَكْبَرُ، لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ، لَهُ الْمُلْكُ وَلَهُ الْحَمْدُ وَهُوَ عَلَى كُلِّ شَيْءٍ قَدِيرٌ",
-  };
+    // الحج (09-hajj.js). مسودة تحتاج مراجعة مختص: docs/hajj-texts-review.md
+    hajjNiyyah: "لَبَّيْكَ اللَّهُمَّ حَجًّا",
+    arafah: "لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ، لَهُ الْمُلْكُ وَلَهُ الْحَمْدُ، وَهُوَ عَلَى كُلِّ شَيْءٍ قَدِيرٌ",
+    mashar: "فَإِذَا أَفَضْتُم مِّنْ عَرَفَاتٍ فَاذْكُرُوا اللَّهَ عِندَ الْمَشْعَرِ الْحَرَامِ",
+    jamrah: "اللَّهُ أَكْبَرُ",
+  },
+  // شريط مراحل الحج: العمرة أولًا (التمتّع)، ثم أيام الحج
+  HAJJ_RAIL = [
+    { k: "umrah", name: "العمرة" },
+    { k: "tarwiyah", name: "التروية" },
+    { k: "arafah", name: "عرفة" },
+    { k: "muzdalifah", name: "مزدلفة" },
+    { k: "nahr", name: "النحر" },
+    { k: "tashreeq", name: "التشريق" },
+    { k: "wada", name: "الوداع" },
+  ];
 function jc(i) {
   let t = (e, n) => (i === "f" ? n : e);
   return {
@@ -7322,11 +7773,272 @@ function jc(i) {
         "راجعي التنبيهات أعلاه، وأعيدي التدريب قبل عمرتك الحقيقية.",
       ),
     },
+    // طواف الإفاضة والوداع (09-game.js، tawafKind): لا اضطباع ولا رمل، والتلبية قُطعت عند رمي جمرة العقبة
+    toStartHajj: {
+      rite: "tawaf",
+      title: "إلى بداية الطواف",
+      text: t(
+        "ادخل المسجد مقدّمًا رجلك اليمنى، واتجه إلى محاذاة الحجر الأسود. ولا اضطباع في هذا الطواف ولا رَمَل، فهما في الطواف الأول وحده.",
+        "ادخلي المسجد مقدّمةً رجلك اليمنى، واتجهي إلى محاذاة الحجر الأسود.",
+      ),
+      say: si.enter,
+      hint: t("اذهب إلى خط البداية", "اذهبي إلى خط البداية"),
+    },
+    atStartHajj: {
+      rite: "tawaf",
+      title: "بداية الطواف",
+      text: t(
+        "أنت محاذٍ للحجر الأسود. استلمه إن تيسّر، وإلا فأشِر إليه بيدك اليمنى، ثم ابدأ والكعبة عن يسارك.",
+        "أنتِ محاذية للحجر الأسود. استلميه إن تيسّر دون مزاحمة، وإلا فأشيري إليه بيدك اليمنى، ثم ابدئي والكعبة عن يسارك.",
+      ),
+      say: si.start,
+      action: t("أشِر وكبّر", "أشيري وكبّري"),
+    },
+    // الحج بالتمتّع (09-hajj.js). مسودة مختصرة تحتاج مراجعة مختص قبل النشر: docs/hajj-texts-review.md
+    hajj: {
+      intro: t(
+        "حج التمتّع: تبدأ بعمرة كاملة وتتحلّل منها، ثم تحرم بالحج يوم التروية.",
+        "حج التمتّع: تبدئين بعمرة كاملة وتتحلّلين منها، ثم تحرمين بالحج يوم التروية.",
+      ),
+      niyyah: {
+        title: "يوم التروية: الإحرام بالحج",
+        text: t(
+          "في الثامن من ذي الحجة أحرم بالحج من مكانك في مكة. اغتسل وتطيّب في بدنك، والبس إزارًا ورداءً أبيضين، ثم انوِ الحج.",
+          "في الثامن من ذي الحجة أحرمي بالحج من مكانك في مكة. اغتسلي، والبسي ما شئتِ من الثياب الساترة بلا نقاب ولا قفّازين، ثم انوي الحج.",
+        ),
+        say: si.hajjNiyyah,
+        action: t("انوِ الحج", "انوي الحج"),
+        done: t("أحرمتَ بالحج", "أحرمتِ بالحج"),
+      },
+      talbiya: {
+        title: "التلبية",
+        text: t(
+          "ردّد التلبية رافعًا صوتك، ولا تقطعها حتى ترمي جمرة العقبة يوم النحر.",
+          "ردّدي التلبية بصوت منخفض، ولا تقطعيها حتى ترمي جمرة العقبة يوم النحر.",
+        ),
+        say: si.talbiya,
+        action: "لبّيك",
+      },
+      toMina: {
+        title: "إلى منى",
+        text: t(
+          "اخرج إلى منى ضحى يوم التروية. وصلِّ بها الظهر والعصر والمغرب والعشاء والفجر، كل صلاة في وقتها، والرباعية ركعتين.",
+          "اخرجي إلى منى ضحى يوم التروية. وصلّي بها الظهر والعصر والمغرب والعشاء والفجر، كل صلاة في وقتها، والرباعية ركعتين.",
+        ),
+        action: t("انطلق إلى منى", "انطلقي إلى منى"),
+      },
+      minaNight: {
+        title: "منى: ليلة عرفة",
+        text: t(
+          "أنت في خيام منى. أكثر من التلبية والذكر، وبِت بها ليلة عرفة، وهو سنّة.",
+          "أنتِ في خيام منى. أكثري من التلبية والذكر، وبيتي بها ليلة عرفة، وهو سنّة.",
+        ),
+        action: t("بِت بمنى", "بيتي بمنى"),
+        veil: "المبيت بمنى ليلة عرفة",
+      },
+      toArafah: {
+        title: "يوم عرفة",
+        text: t(
+          "بعد طلوع الشمس سِر إلى عرفة. والوقوف بعرفة ركن الحج الأعظم، من فاته فاته الحج.",
+          "بعد طلوع الشمس سيري إلى عرفة. والوقوف بعرفة ركن الحج الأعظم، من فاته فاته الحج.",
+        ),
+        action: t("انطلق إلى عرفة", "انطلقي إلى عرفة"),
+      },
+      enterArafah: {
+        title: "حدود عرفة",
+        text: t(
+          "ادخل حدود عرفة: علامات الحدود على الطريق، وما خارجها ليس من عرفة. وعرفة كلها موقف، ولا يلزم صعود جبل الرحمة.",
+          "ادخلي حدود عرفة: علامات الحدود على الطريق، وما خارجها ليس من عرفة. وعرفة كلها موقف، ولا يلزم صعود جبل الرحمة.",
+        ),
+        hint: t("ادخل حدود عرفة", "ادخلي حدود عرفة"),
+        action: t("قف بعرفة", "قفي بعرفة"),
+      },
+      stand: {
+        title: "الوقوف بعرفة",
+        text: t(
+          "صلِّ الظهر والعصر جمعًا وقصرًا، ثم تفرّغ للدعاء والذكر مستقبلًا القبلة رافعًا يديك حتى تغرب الشمس. ولا تخرج من حدود عرفة قبل الغروب.",
+          "صلّي الظهر والعصر جمعًا وقصرًا، ثم تفرّغي للدعاء والذكر مستقبلةً القبلة رافعةً يديك حتى تغرب الشمس. ولا تخرجي من حدود عرفة قبل الغروب.",
+        ),
+        say: si.arafah,
+        wait: "قف حتى الغروب",
+        waitF: "قفي حتى الغروب",
+      },
+      toMuzdalifah: {
+        title: "غربت الشمس",
+        text: t(
+          "انفر إلى مزدلفة بسكينة، مكثرًا من التلبية والذكر.",
+          "انفري إلى مزدلفة بسكينة، مكثرةً من التلبية والذكر.",
+        ),
+        action: t("انفر إلى مزدلفة", "انفري إلى مزدلفة"),
+      },
+      muzPrayer: {
+        title: "مزدلفة",
+        text: t(
+          "إذا وصلت مزدلفة فصلِّ المغرب والعشاء جمعًا، والعشاء ركعتين.",
+          "إذا وصلتِ مزدلفة فصلّي المغرب والعشاء جمعًا، والعشاء ركعتين.",
+        ),
+        action: t("صلِّ المغرب والعشاء", "صلّي المغرب والعشاء"),
+        veil: "صلاة المغرب والعشاء جمعًا",
+      },
+      pebbles: {
+        title: "الحصى",
+        text: t(
+          "التقط سبع حصيات لرمي جمرة العقبة، كل حصاة أكبر قليلًا من حبة الحمص. ويجوز التقاطها من منى.",
+          "التقطي سبع حصيات لرمي جمرة العقبة، كل حصاة أكبر قليلًا من حبة الحمص. ويجوز التقاطها من منى.",
+        ),
+        hint: t("اذهب إلى مكان الحصى", "اذهبي إلى مكان الحصى"),
+        action: t("التقط الحصى", "التقطي الحصى"),
+        done: "معك سبع حصيات",
+      },
+      muzNight: {
+        title: "المبيت بمزدلفة",
+        text: t(
+          "بِت بمزدلفة حتى تصلي الفجر. ويجوز للضعفة ومن معهم الدفع منها آخر الليل.",
+          "بيتي بمزدلفة حتى تصلي الفجر. ويجوز للنساء والضعفة الدفع منها آخر الليل.",
+        ),
+        action: t("بِت حتى الفجر", "بيتي حتى الفجر"),
+        veil: "المبيت بمزدلفة حتى الفجر",
+      },
+      mashar: {
+        title: "المشعر الحرام",
+        text: t(
+          "بعد صلاة الفجر قف عند المشعر الحرام، أو حيث كنت من مزدلفة، مستقبلًا القبلة. واذكر الله وادعُه حتى يُسفر الصبح جدًّا.",
+          "بعد صلاة الفجر قفي عند المشعر الحرام، أو حيث كنتِ من مزدلفة، مستقبلةً القبلة. واذكري الله وادعيه حتى يُسفر الصبح جدًّا.",
+        ),
+        say: si.mashar,
+        hint: t("اذهب إلى المشعر الحرام", "اذهبي إلى المشعر الحرام"),
+        action: t("اذكر الله وادعُ", "اذكري الله وادعي"),
+      },
+      toMinaNahr: {
+        title: "إلى منى",
+        text: t(
+          "ادفع إلى منى قبل طلوع الشمس، ملبّيًا.",
+          "ادفعي إلى منى قبل طلوع الشمس، ملبّيةً.",
+        ),
+        action: t("انطلق إلى منى", "انطلقي إلى منى"),
+      },
+      aqaba: {
+        title: "يوم النحر: جمرة العقبة",
+        text: t(
+          "ارمِ جمرة العقبة وحدها بسبع حصيات متعاقبات، تكبّر مع كل حصاة. واقطع التلبية مع أول حصاة.",
+          "ارمي جمرة العقبة وحدها بسبع حصيات متعاقبات، تكبّرين مع كل حصاة. واقطعي التلبية مع أول حصاة.",
+        ),
+        say: si.jamrah,
+        hint: t("اقترب من جمرة العقبة", "اقتربي من جمرة العقبة"),
+      },
+      throw: t("ارمِ وكبّر", "ارمي وكبّري"),
+      hady: {
+        title: "الهدي",
+        text: t(
+          "على المتمتّع هدي: شاة، أو سُبع بدنة أو بقرة، يُذبح يوم النحر أو أيام التشريق، ويجوز أن توكّل من يذبحه عنك. ومن لم يجد صام ثلاثة أيام في الحج وسبعة إذا رجع.",
+          "على المتمتّعة هدي: شاة، أو سُبع بدنة أو بقرة، يُذبح يوم النحر أو أيام التشريق، ويجوز أن توكّلي من يذبحه عنك. ومن لم يجد صام ثلاثة أيام في الحج وسبعة إذا رجع.",
+        ),
+        action: "ذُبح الهدي",
+      },
+      shave: {
+        title: "الحلق أو التقصير",
+        text: t(
+          "احلق رأسك، والحلق أفضل، أو قصّر من شعر رأسك كله. وبالرمي والحلق تتحلّل التحلّل الأول: يحلّ لك كل شيء إلا النساء.",
+          "قصّري من أطراف شعرك قدر أنملة. وبالرمي والتقصير تتحلّلين التحلّل الأول: يحلّ لك كل شيء إلا الزوج.",
+        ),
+        action: t("حلقتُ أو قصّرتُ", "قصّرتُ"),
+        done: "التحلّل الأول",
+      },
+      toIfadah: {
+        title: "طواف الإفاضة",
+        text: t(
+          "انزل إلى مكة فطُف طواف الإفاضة، وهو ركن، ثم صلِّ ركعتين، واسعَ بين الصفا والمروة سعي الحج.",
+          "انزلي إلى مكة فطوفي طواف الإفاضة، وهو ركن، ثم صلّي ركعتين، واسعَيْ بين الصفا والمروة سعي الحج.",
+        ),
+        action: t("انطلق إلى مكة", "انطلقي إلى مكة"),
+      },
+      fullTahallul: "التحلّل الثاني: حلّ لك كل شيء",
+      backToMina: {
+        title: "إلى منى",
+        text: t(
+          "ارجع إلى منى، وبِت بها ليالي أيام التشريق.",
+          "ارجعي إلى منى، وبيتي بها ليالي أيام التشريق.",
+        ),
+        action: t("ارجع إلى منى", "ارجعي إلى منى"),
+      },
+      minaTashreeq: {
+        title: "منى: ليالي التشريق",
+        text: t(
+          "المبيت بمنى ليالي التشريق واجب. وأكثر فيها من ذكر الله.",
+          "المبيت بمنى ليالي التشريق واجب. وأكثري فيها من ذكر الله.",
+        ),
+        action: t("بِت بمنى", "بيتي بمنى"),
+        veil: "المبيت بمنى",
+      },
+      day: ["الحادي عشر", "الثاني عشر", "الثالث عشر"],
+      stoning: {
+        title: (d) => `اليوم ${d} من ذي الحجة`,
+        text: t(
+          "بعد الزوال ارمِ الجمرات الثلاث بالترتيب: الصغرى ثم الوسطى ثم العقبة، سبع حصيات لكل جمرة، تكبّر مع كل حصاة.",
+          "بعد الزوال ارمي الجمرات الثلاث بالترتيب: الصغرى ثم الوسطى ثم العقبة، سبع حصيات لكل جمرة، تكبّرين مع كل حصاة.",
+        ),
+        say: si.jamrah,
+        hint: (name) => t(`اقترب من ${name}`, `اقتربي من ${name}`),
+        pebbles: "معك ٢١ حصاة من منى",
+      },
+      duaAfter: {
+        title: "الدعاء بعد الرمي",
+        text: t(
+          "تنحَّ قليلًا عن الزحام، واستقبل القبلة، وادعُ طويلًا رافعًا يديك. ويُسنّ هذا بعد الصغرى والوسطى، لا بعد العقبة.",
+          "تنحّي قليلًا عن الزحام، واستقبلي القبلة، وادعي طويلًا رافعةً يديك. ويُسنّ هذا بعد الصغرى والوسطى، لا بعد العقبة.",
+        ),
+        action: t("ادعُ", "ادعي"),
+      },
+      dayDone: {
+        title: "انتهى رمي اليوم",
+        text: t(
+          "لا يُدعى بعد جمرة العقبة. ارجع إلى خيامك وبِت بمنى.",
+          "لا يُدعى بعد جمرة العقبة. ارجعي إلى خيامك وبيتي بمنى.",
+        ),
+      },
+      choice: {
+        title: "التعجّل أو التأخّر",
+        text: t(
+          "من تعجّل خرج من منى بعد رمي اليوم الثاني عشر وقبل غروب الشمس. ومن تأخّر بات ليلة الثالث عشر ورمى بعد الزوال، والتأخّر أفضل.",
+          "من تعجّلت خرجت من منى بعد رمي اليوم الثاني عشر وقبل غروب الشمس. ومن تأخّرت باتت ليلة الثالث عشر ورمت بعد الزوال، والتأخّر أفضل.",
+        ),
+        leave: t("تعجّل: اخرج قبل الغروب", "تعجّلي: اخرجي قبل الغروب"),
+        stay: t("تأخّر إلى الثالث عشر", "تأخّري إلى الثالث عشر"),
+      },
+      toWada: {
+        title: "طواف الوداع",
+        text: t(
+          "إذا أردت السفر من مكة فطُف طواف الوداع، ليكون آخر عهدك بالبيت.",
+          "إذا أردتِ السفر من مكة فطوفي طواف الوداع، ليكون آخر عهدك بالبيت. ولا وداع على الحائض والنفساء.",
+        ),
+        action: t("انطلق إلى مكة", "انطلقي إلى مكة"),
+      },
+      toasts: {
+        outArafah: t("لا تخرج من حدود عرفة قبل غروب الشمس", "لا تخرجي من حدود عرفة قبل غروب الشمس"),
+        wrongJamrahNahr: "يوم النحر تُرمى جمرة العقبة وحدها",
+        wrongOrder: t("ارمِ بالترتيب: الصغرى ثم الوسطى ثم العقبة", "ارمي بالترتيب: الصغرى ثم الوسطى ثم العقبة"),
+        tooFar: t("بعيد عن الحوض: اقترب حتى تقع الحصاة فيه", "بعيدة عن الحوض: اقتربي حتى تقع الحصاة فيه"),
+        stoned: (name) => t(`أتممتَ رمي ${name}`, `أتممتِ رمي ${name}`),
+        noDua: "فاتك الدعاء بعد الجمرة، وهو سنّة",
+      },
+      done: {
+        title: "تمّ الحج التدريبي",
+        clean: t(
+          "أدّيت المناسك بترتيبها، بلا خروج من عرفة قبل الغروب ولا خطأ في ترتيب الرمي.",
+          "أدّيتِ المناسك بترتيبها، بلا خروج من عرفة قبل الغروب ولا خطأ في ترتيب الرمي.",
+        ),
+        review: t(
+          "راجع التنبيهات أعلاه، وأعِد التدريب قبل حجك.",
+          "راجعي التنبيهات أعلاه، وأعيدي التدريب قبل حجك.",
+        ),
+      },
+    },
     // «تعلّم سريع» (09-fast.js): زر في البطاقة يمشي المقطع الطويل. وأزرار المناسك نفسها تبقى
     fast: {
       toStart: t("امشِ إلى خط البداية", "امشي إلى خط البداية"),
       lap: t("أكمل الشوط", "أكملي الشوط"),
       toMaqam: t("امشِ إلى خلف المقام", "امشي إلى خلف المقام"),
+      toTarget: t("امشِ إلى الهدف", "امشي إلى الهدف"),
     },
   };
 }
@@ -7762,6 +8474,8 @@ function createRouteGuide({ game, hud, laneAt }) {
       return around(x, z, g.sense, g.rHold);
     }
     const T = hud.model.target;
+    // في مشاعر الحج (SITE): إلى الهدف في خط مستقيم، والتصادم يدور حول الحوض والخيام
+    if (SITE) return stage === "hajj" && T && Math.hypot(T[0] - x, T[1] - z) >= 0.8 ? unit(T[0] - x, T[1] - z) : null;
     if (!GUIDE_STAGES[stage] || !T) return null;
     return toTarget(x, z, T[0], T[1]);
   };
@@ -8006,6 +8720,7 @@ function Rd(i, t, e, n, s = 1) {
     i.restore();
 }
 function Cd(i, t, e, n, s, r, a, o) {
+  if (s.site) return paintSiteMap(i, t, e, n, s, r, a, o);
   i.save(), i.translate(t, e);
   let l = n / 2,
     c = n / 120,
@@ -8166,7 +8881,60 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.roundRect(x, y, w, h, r);
 }
 
+// خريطة موقع من مشاعر الحج (03-mashair.js، site.map): المعالم، وحدود عرفة، والهدف، واللاعب
+function paintSiteMap(i, t, e, n, s, r, a, o) {
+  const m = s.site.map;
+  const l = n / 2;
+  const c = n / 120;
+  i.save();
+  i.translate(t, e);
+  i.beginPath();
+  i.arc(l, l, l - 1.5 * c, 0, le);
+  i.fillStyle = "rgba(10,36,31,0.86)";
+  i.fill();
+  i.lineWidth = 1.4 * c;
+  i.strokeStyle = "rgba(214,176,98,0.9)";
+  i.stroke();
+  i.clip();
+  const k = (l - 8 * c) / m.radius;
+  const X = (x) => l + (x - m.center[0]) * k;
+  const Z = (z) => l + (z - m.center[1]) * k;
+  if (m.ring) {
+    i.beginPath();
+    i.arc(X(0), Z(0), m.ring * k, 0, le);
+    i.fillStyle = "rgba(224,184,74,0.12)";
+    i.fill();
+    i.strokeStyle = "#e0b84a";
+    i.lineWidth = 1.6 * c;
+    i.stroke();
+  }
+  i.direction = "rtl";
+  i.textAlign = "center";
+  i.textBaseline = "middle";
+  i.font = `600 ${Math.round(9 * c)}px ${ri}`;
+  for (const p of m.marks) {
+    i.beginPath();
+    i.arc(X(p.x), Z(p.z), Math.max(3 * c, p.r * k), 0, le);
+    i.fillStyle = p.color;
+    i.fill();
+    if (!p.label) continue;
+    i.fillStyle = "rgba(246,241,228,0.95)";
+    i.fillText(p.label, X(p.x) + Math.max(3 * c, p.r * k) + 14 * c, Z(p.z));
+  }
+  if (s.target) {
+    i.strokeStyle = "#ffd36b";
+    i.lineWidth = 1.6 * c;
+    i.beginPath();
+    i.arc(X(s.target[0]), Z(s.target[1]), (5 + 1.5 * Math.sin(o * 4)) * c, 0, le);
+    i.stroke();
+  }
+  if (r) Rd(i, X(r.x), Z(r.z), -a, c);
+  i.restore();
+}
+
+// الشريط: مراحل العمرة (Ti)، أو مراحل الحج (s.railList = HAJJ_RAIL) والمرحلة الحالية s.railStep من 09-hajj.js
 function railIndex(s) {
+  if (s.railList) return s.rite === "end" ? s.railList.length : s.railStep || 0;
   return s.rite === "end" ? Ti.length : Ti.findIndex((t) => t.k === s.rite);
 }
 
@@ -8179,10 +8947,11 @@ function paintRail(ctx, w, h, s, { narrow = false } = {}) {
   ctx.lineWidth = 1;
   ctx.stroke();
   const L = railIndex(s);
-  const cell = (w - 20) / Ti.length;
+  const list = s.railList || Ti;
+  const cell = (w - 20) / list.length;
   ctx.direction = "rtl";
   ctx.textBaseline = "middle";
-  Ti.forEach((t, i) => {
+  list.forEach((t, i) => {
     const cx = w - 10 - cell * i - cell / 2;
     const now = i === L;
     const done = i < L;
@@ -8211,7 +8980,8 @@ function paintRail(ctx, w, h, s, { narrow = false } = {}) {
 
 function counterLabel(s) {
   const c = s.counter;
-  if (c.mode !== "tawaf" && c.mode !== "sai") return "المسجد الحرام";
+  if (c.mode === "jamrah") return c.label;
+  if (c.mode !== "tawaf" && c.mode !== "sai") return s.site ? s.site.name : "المسجد الحرام";
   const n = De(Math.min(c.done + 1, 7));
   return c.mode === "tawaf"
     ? `الشوط ${n} من ${De(7)}`
@@ -8238,7 +9008,7 @@ function paintInstrument(ctx, size, s, pos, heading, time, { shadow = true } = {
   ctx.shadowBlur = 0;
   let h = size + 6 + lines.length * 18.6;
   const c = s.counter;
-  if (c.mode === "tawaf" || c.mode === "sai") {
+  if (c.mode === "tawaf" || c.mode === "sai" || c.mode === "jamrah") {
     for (let i = 0; i < 7; i++) {
       const x = size / 2 + (3 - i) * 14;
       ctx.beginPath();
@@ -8254,7 +9024,7 @@ function paintInstrument(ctx, size, s, pos, heading, time, { shadow = true } = {
 
 function cardContent(s) {
   return s.veil
-    ? { title: "ركعتا الطواف", text: s.veil, say: "" }
+    ? { title: s.veilTitle || "ركعتا الطواف", text: s.veil, say: "" }
     : { title: s.title, text: s.text, say: s.say };
 }
 
@@ -8943,6 +9713,10 @@ function createHud({ camera }) {
     toast: { msg: "", kind: "info", until: 0 },
     target: null,
     veil: "",
+    veilTitle: "",
+    railList: null, // مراحل الحج (HAJJ_RAIL) بدل مراحل العمرة
+    railStep: 0,
+    site: null, // موقع من مشاعر الحج (03-mashair.js) أو null في المسجد الحرام
   };
   const hud = { model: s, onCardBtn: null, onChange: null, time: 0 };
   const changed = () => hud.onChange && hud.onChange();
@@ -9014,9 +9788,25 @@ function createHud({ camera }) {
     changed();
   };
   hud.setTarget = (t) => (s.target = t);
-  hud.setVeil = (text) => {
+  hud.setVeil = (text, title = "") => {
+    s.veilTitle = title;
     s.veil = text || "";
     dom.veilText.textContent = s.veil;
+    changed();
+  };
+  // شريط الحج: يُبنى من جديد في المرآة النصية
+  hud.setRail = (list, step = 0) => {
+    s.railList = list;
+    s.railStep = step;
+    dom.rail.innerHTML = (list || Ti).map((t, i) => `<li data-k="${t.k}">${De(i + 1)}. ${t.name}</li>`).join("");
+    hud.setRite(s.rite);
+  };
+  hud.setRailStep = (step) => {
+    s.railStep = step;
+    hud.setRite(s.rite);
+  };
+  hud.setSite = (site) => {
+    s.site = site;
     changed();
   };
   hud.setJog = (on) => {
@@ -9076,7 +9866,7 @@ function createHud({ camera }) {
 var FAST_STEP = 0.5; // متر لكل خطوة من المشي المسرَّع
 var FAST_FADE_MS = 380;
 
-function createFastLearning({ game, hud, player, world }) {
+function createFastLearning({ game, hud, player, world, hajj }) {
   const f = { enabled: false, busy: false };
   const guide = createRouteGuide({ game, hud, laneAt: world.crowds.laneAt });
 
@@ -9084,6 +9874,7 @@ function createFastLearning({ game, hud, player, world }) {
   f.label = () => {
     if (!f.enabled || f.busy) return null;
     const L = jc(game.gender).fast;
+    if (game.stage === "hajj") return hajj.walking() ? L.toTarget : null; // في مشاعر الحج: إلى الجمرة، أو حدود عرفة...
     const p = player.getPos();
     if (game.stage === "toStart") return Zc(p.x, p.z) ? null : L.toStart;
     if (game.stage === "toMaqam") return $c(p.x, p.z) ? null : L.toMaqam;
@@ -9137,7 +9928,8 @@ function createFastLearning({ game, hud, player, world }) {
   return f;
 }
 function Pd({ world: i, hud: t, player: e }) {
-  let n = { gender: "m", stage: "intro", sub: "", t0: 0, clock: 0 },
+  // tawafKind: "umrah" (الطواف الأول)، أو "ifadah" و"wada" في الحج (09-hajj.js): لا اضطباع ولا رمل فيهما
+  let n = { gender: "m", stage: "intro", sub: "", t0: 0, clock: 0, tawafKind: "umrah" },
     s = jc("m"),
     r,
     a,
@@ -9183,7 +9975,10 @@ function Pd({ world: i, hud: t, player: e }) {
       A = -Math.sin(Yr.phi) * Yr.r;
     return [I, A];
   }
+  // نص بطاقة بحسب الطواف: toStartHajj وatStartHajj لطواف الإفاضة والوداع
+  let K = (I) => (n.tawafKind !== "umrah" && s[I + "Hajj"]) || s[I];
   function b(I, A = "") {
+    if (n.onStage && n.onStage(I, A)) return; // الحج يتولى ما بعد الطواف (09-hajj.js)
     switch (((n.stage = I), (n.sub = A), (l = null), (c = ""), I)) {
       case "ihram": {
         t.setCounter({ mode: null }),
@@ -9227,12 +10022,12 @@ function Pd({ world: i, hud: t, player: e }) {
     }
   }
   (n.start = (I) => {
-    (n.gender = I), (s = jc(I)), u(), (n.clock = 0);
+    (n.gender = I), (s = jc(I)), u(), (n.clock = 0), (n.tawafKind = "umrah");
     let [A, L] = p();
     e.teleport(A, L, -A, -L), b("ihram", "niyyah");
   }),
     (n.jump = (I) => {
-      if ((w++, u(), t.setVeil(""), t.fadeTo(0), I === "ihram")) return n.start(n.gender);
+      if ((w++, u(), (n.tawafKind = "umrah"), t.setVeil(""), t.fadeTo(0), I === "ihram")) return n.start(n.gender);
       if (I === "tawaf") {
         let L = we - 0.28;
         e.teleport(Math.cos(L) * 14, -Math.sin(L) * 14, -Math.cos(we), Math.sin(we)), b("toStart");
@@ -9245,6 +10040,12 @@ function Pd({ world: i, hud: t, player: e }) {
           ? ((r.valid = 7), e.teleport(dt.xc - 3, dt.safaZone + 6, 0, -1), b("toSafa"))
           : I === "tahallul" &&
             ((r.valid = 7), (a.lap = 7), e.teleport(dt.xc - 3, dt.marwaZone - 5, 0, 1), b("tahallul"));
+    }),
+    // طواف جديد من مدخل المسجد: الإفاضة أو الوداع في الحج. عدّادات الطواف تبدأ من الصفر
+    (n.beginTawaf = (I) => {
+      w++, u(), (n.tawafKind = I), t.setVeil(""), t.fadeTo(0);
+      let [A, L] = p();
+      e.teleport(A, L, -A, -L), b("toStart");
     }),
     (n.fastToSafa = () => {
       t.fadeTo(1),
@@ -9340,10 +10141,10 @@ function Pd({ world: i, hud: t, player: e }) {
       }
       r.takbirWindow = 7;
     }
-    n.gender === "m" && r.valid < 3 && e.moving && ((o.ramalMove += A), e.isJogging() && (o.ramalT += A));
+    n.gender === "m" && r.valid < 3 && n.tawafKind === "umrah" && e.moving && ((o.ramalMove += A), e.isJogging() && (o.ramalT += A));
     let H = (((L - we) % le) + le) % le,
       V = y(H),
-      Q = n.gender === "m" && r.valid < 3,
+      Q = n.gender === "m" && r.valid < 3 && n.tawafKind === "umrah",
       G = `${V}|${Q}`;
     if (G !== c) {
       c = G;
@@ -9495,8 +10296,8 @@ function Pd({ world: i, hud: t, player: e }) {
             let T = l === null;
             (l = L),
               L
-                ? (v(s.atStart), t.setAction(s.atStart.action, !0))
-                : (v(s.toStart, { speak: T }), t.setAction(s.toStart.hint, !1));
+                ? (v(K("atStart")), t.setAction(K("atStart").action, !0))
+                : (v(K("toStart"), { speak: T }), t.setAction(K("toStart").hint, !1));
           }
           break;
         }
@@ -9533,6 +10334,372 @@ function Pd({ world: i, hud: t, player: e }) {
     (n.debug = () => ({ stage: n.stage, sub: n.sub, T: { ...r }, A: { ...a }, stats: { ...o } })),
     n
   );
+}
+// الحج بالتمتّع: عمرة كاملة (09-game.js كما هي)، ثم أيام الحج في مشاعر 03-mashair.js:
+//   التروية: الإحرام بالحج والتلبية، والمبيت بمنى
+//   عرفة: دخول الحدود، والوقوف حتى الغروب دون الخروج منها
+//   مزدلفة: المغرب والعشاء جمعًا، والتقاط الحصى، والمبيت، والذكر عند المشعر الحرام
+//   النحر: رمي جمرة العقبة سبعًا، والهدي، والحلق أو التقصير، وطواف الإفاضة وسعي الحج (09-game.js بـ tawafKind)
+//   التشريق: المبيت بمنى، ورمي الجمرات الثلاث بالترتيب كل يوم والدعاء بعد الصغرى والوسطى، ثم التعجّل أو التأخّر
+//   الوداع: طواف الوداع، ثم الملخص
+// النصوص في jc(gender).hajj وsi في 04-content.js، وهي مسودة تحتاج مراجعة مختص (docs/hajj-texts-review.md).
+// قاعدة CLAUDE.md: لا يُنطق إلا العنوان وأول جملة من النص، ولا يمرّ say ولا si.* إلى النطق.
+var HAJJ_TRAVEL_MS = 1300; // الانتقال بين المواقع خلف التعتيم
+var HAJJ_WAIT_MS = 3200; // المبيت والصلاة خلف الحجاب
+var ARAFAH_STAND = 6; // ثوانٍ (بزمن الإطارات) داخل حدود عرفة حتى الغروب
+var HAJJ_STEP_RAIL = {
+  niyyah: 1, talbiya: 1, toMina: 1, minaNight: 1,
+  toArafah: 2, enterArafah: 2, stand: 2,
+  toMuzdalifah: 3, muzPrayer: 3, pebbles: 3, muzNight: 3, mashar: 3,
+  toMinaNahr: 4, aqaba: 4, hady: 4, shave: 4, toIfadah: 4, ifadah: 4, backToMina: 4,
+  minaTashreeq: 5, stoning: 5, dayDone: 5, choice: 5,
+  toWada: 6, wada: 6,
+};
+
+function createHajj({ game, hud, player, mashair, atmosphere }) {
+  const h = { enabled: false, step: null, busy: false, day: 11, onFinish: null };
+  let T = jc("m").hajj;
+  let st = null;
+  let token = 0; // يُلغي ما بقي من انتقال أو انتظار إذا أعيد التدريب
+  const speak = (title, text = "") => hud.speak(text ? `${title}. ${(text || "").split(/[.؛:]/)[0]}` : title);
+  const card = (c, { say = c.say || "", btn = null, title = c.title, text = c.text, quiet = false } = {}) => {
+    hud.setCard({ title, text, say, btn });
+    if (!quiet) speak(title, text);
+  };
+  const target = (p) => (hud.setTarget(p), mashair.setTarget(p));
+  const fresh = () => ({
+    umrah: null, ihram: false, stood: false, standT: 0, outArafah: 0, outT: 0, muzPrayer: false, muzNight: false, mashar: false,
+    pebbles: 0, aqaba: 0, wrongNahr: 0, hady: false, shave: false, ifadah: 0, saiHajj: 0, tawafWarn: 0,
+    tashreeq: 0, tashreeqTotal: 42, orderErr: 0, dua: 0, duaTotal: 4, wada: 0, stayed: false,
+  });
+  // الرمي: الجمرة المطلوبة، وعدد ما رُمي فيها، والدعاء بعدها
+  const throwState = { order: 0, count: 0, duaFor: null };
+  const jamrah = (k) => MINA_JAMARAT.find((j) => j.k === k);
+  const front = (j) => [j.x, j.z + JAMRAH_BASIN + 2]; // يُقبَل على الحوض من جهة الخيام
+
+  h.setKind = (kind) => {
+    h.enabled = kind === "hajj";
+    hud.setRail(h.enabled ? HAJJ_RAIL : null, 0);
+  };
+  // تدريب جديد: من المسجد الحرام بلا مواقع، ومن العمرة
+  h.reset = (gender) => {
+    token++;
+    T = jc(gender).hajj;
+    st = fresh();
+    h.step = null;
+    h.busy = false;
+    if (mashair.site) mashair.enter(null);
+    hud.setSite(null);
+    hud.setVeil("");
+    if (atmosphere.chosen && atmosphere.time !== atmosphere.chosen) atmosphere.setTime(atmosphere.chosen, { save: false });
+    hud.setRail(h.enabled ? HAJJ_RAIL : null, 0);
+    if (h.enabled) setTimeout(() => game.stage === "ihram" && hud.toast(T.intro, "info", 5), 6500);
+  };
+
+  // ——— الانتقال والانتظار ———
+  function travel(siteKey, spawn, title, then) {
+    const my = ++token;
+    h.busy = true;
+    hud.setAction("", false);
+    hud.fadeTo(1);
+    hud.setVeil(title, "الانتقال");
+    setTimeout(() => {
+      if (my !== token) return;
+      mashair.enter(siteKey);
+      const site = siteKey ? mashair.sites[siteKey] : null;
+      hud.setSite(site);
+      atmosphere.setTime(site ? site.time : atmosphere.chosen || DEFAULT_TIME, { save: false });
+      if (spawn) player.teleport(spawn[0], spawn[1], spawn[2], spawn[3]);
+      hud.setVeil("");
+      hud.fadeTo(0);
+      h.busy = false;
+      then();
+    }, HAJJ_TRAVEL_MS);
+  }
+  function wait(title, text, then) {
+    const my = ++token;
+    h.busy = true;
+    hud.setAction("", false);
+    hud.fadeTo(0.85);
+    hud.setVeil(text, title);
+    setTimeout(() => {
+      if (my !== token) return;
+      hud.setVeil("");
+      hud.fadeTo(0);
+      h.busy = false;
+      then();
+    }, HAJJ_WAIT_MS);
+  }
+  const toMina = (spawn, then) => travel("mina", mashair.sites.mina.spawns[spawn], "إلى منى", then);
+
+  // ——— الخطوات ———
+  const go = (step) => {
+    h.step = step;
+    hud.setRailStep(HAJJ_STEP_RAIL[step] ?? 0);
+    hud.setCounter({ mode: null });
+    target(null);
+    STEPS[step].enter();
+  };
+  const simple = (c, next, { enabled = true } = {}) => ({
+    enter: () => (card(T[c]), hud.setAction(T[c].action, enabled)),
+    act: next,
+  });
+  const STEPS = {
+    niyyah: simple("niyyah", () => ((st.ihram = true), hud.toast(T.niyyah.done, "ok", 2), go("talbiya"))),
+    talbiya: simple("talbiya", () => go("toMina")),
+    toMina: simple("toMina", () => toMina("tents", () => go("minaNight"))),
+    minaNight: simple("minaNight", () => wait(T.minaNight.veil, T.minaNight.text, () => go("toArafah"))),
+    toArafah: simple("toArafah", () => travel("arafat", mashair.sites.arafat.spawns.road, "إلى عرفة", () => go("enterArafah"))),
+    enterArafah: {
+      enter: () => (card(T.enterArafah), target([0, ARAFAT_R - 10])),
+      update: (p) => {
+        const inside = mashair.sites.arafat.inside(p.x, p.z);
+        hud.setAction(inside ? T.enterArafah.action : T.enterArafah.hint, inside);
+      },
+      act: (p) => mashair.sites.arafat.inside(p.x, p.z) && go("stand"),
+      walk: true,
+    },
+    stand: {
+      enter: () => {
+        st.standT = 0;
+        card(T.stand);
+        hud.setAction(game.gender === "f" ? T.stand.waitF : T.stand.wait, false);
+      },
+      update: (p, dt) => {
+        if (mashair.sites.arafat.inside(p.x, p.z)) st.standT += dt;
+        else if ((st.outT -= dt) <= 0) (st.outArafah++, (st.outT = 5), hud.toast(T.toasts.outArafah, "warn", 4), speak(T.toasts.outArafah));
+        const done = Math.min(7, Math.floor((st.standT / ARAFAH_STAND) * 7));
+        hud.setCounter({ mode: "jamrah", done, label: "الوقوف حتى الغروب" });
+        if (st.standT >= ARAFAH_STAND) {
+          st.stood = true;
+          atmosphere.setTime("night", { save: false }); // غربت الشمس
+          go("toMuzdalifah");
+        }
+      },
+    },
+    toMuzdalifah: simple("toMuzdalifah", () => travel("muzdalifah", mashair.sites.muzdalifah.spawns.road, "إلى مزدلفة", () => go("muzPrayer"))),
+    muzPrayer: simple("muzPrayer", () => wait(T.muzPrayer.veil, T.muzPrayer.text, () => ((st.muzPrayer = true), go("pebbles")))),
+    pebbles: {
+      enter: () => (card(T.pebbles), target([MUZ_PEBBLES.x, MUZ_PEBBLES.z])),
+      update: (p) => {
+        const at = mashair.sites.muzdalifah.atPebbles(p.x, p.z);
+        hud.setAction(at ? T.pebbles.action : T.pebbles.hint, at);
+      },
+      act: (p) => mashair.sites.muzdalifah.atPebbles(p.x, p.z) && ((st.pebbles = 7), hud.toast(T.pebbles.done, "ok", 2), go("muzNight")),
+      walk: true,
+    },
+    muzNight: simple("muzNight", () =>
+      wait(T.muzNight.veil, T.muzNight.text, () => ((st.muzNight = true), atmosphere.setTime("duha", { save: false }), go("mashar"))),
+    ),
+    mashar: {
+      enter: () => (card(T.mashar), target([MUZ_MASHAR.x, MUZ_MASHAR.z + MUZ_MASHAR.d / 2 + 6])),
+      update: (p) => {
+        const at = mashair.sites.muzdalifah.atMashar(p.x, p.z);
+        hud.setAction(at ? T.mashar.action : T.mashar.hint, at);
+      },
+      act: (p) => mashair.sites.muzdalifah.atMashar(p.x, p.z) && ((st.mashar = true), go("toMinaNahr")),
+      walk: true,
+    },
+    toMinaNahr: simple("toMinaNahr", () => toMina("nahr", () => go("aqaba"))),
+    aqaba: {
+      enter: () => {
+        Object.assign(throwState, { order: 2, count: 0, duaFor: null });
+        card(T.aqaba);
+        target(front(jamrah("aqaba")));
+      },
+      update: (p) => stoningUpdate(p, true),
+      act: (p) => stone(p, true),
+      walk: true,
+    },
+    hady: simple("hady", () => ((st.hady = true), go("shave"))),
+    shave: simple("shave", () => ((st.shave = true), hud.toast(T.shave.done, "ok", 3), go("toIfadah"))),
+    toIfadah: simple("toIfadah", () =>
+      travel(null, null, "إلى مكة", () => {
+        h.step = "ifadah";
+        game.beginTawaf("ifadah");
+      }),
+    ),
+    backToMina: simple("backToMina", () => toMina("tents", () => go("minaTashreeq"))),
+    minaTashreeq: simple("minaTashreeq", () => night(() => ((h.day = 11), go("stoning")))),
+    stoning: {
+      enter: () => {
+        Object.assign(throwState, { order: 0, count: 0, duaFor: null });
+        st.pebbles = 21;
+        const d = T.day[h.day - 11];
+        card(T.stoning, { title: T.stoning.title(d) });
+        hud.toast(T.stoning.pebbles, "info", 2.5);
+        target(front(MINA_JAMARAT[0]));
+      },
+      update: (p) => stoningUpdate(p, false),
+      act: (p) => stone(p, false),
+      walk: true,
+    },
+    dayDone: {
+      enter: () => (card(T.dayDone), hud.setAction(T.minaTashreeq.action, true)),
+      act: () => night(() => (h.day++, go("stoning"))),
+    },
+    choice: {
+      enter: () => (card(T.choice, { btn: T.choice.stay }), hud.setAction(T.choice.leave, true)),
+      act: () => go("toWada"),
+      cardBtn: () => ((st.stayed = true), (st.tashreeqTotal = 63), (st.duaTotal = 6), night(() => ((h.day = 13), go("stoning")))),
+    },
+    toWada: simple("toWada", () =>
+      travel(null, null, "إلى مكة", () => {
+        h.step = "wada";
+        game.beginTawaf("wada");
+      }),
+    ),
+  };
+  // المبيت بمنى، ثم الرمي بعد الزوال من مدخل الجمرات
+  function night(then) {
+    wait(T.minaTashreeq.veil, T.minaTashreeq.text, () => {
+      player.teleport(...mashair.sites.mina.spawns.jamarat);
+      then();
+    });
+  }
+
+  // ——— الرمي ———
+  function stoningUpdate(p, nahr) {
+    const n = mashair.nearestJamrah(p.x, p.z);
+    const want = MINA_JAMARAT[throwState.order];
+    if (throwState.duaFor) {
+      // الدعاء بعد الصغرى والوسطى: قريبًا منها. ومن مضى إلى التالية فاته
+      const near = Math.hypot(p.x - throwState.duaFor.x, p.z - throwState.duaFor.z) < 16;
+      if (near) return hud.setAction(T.duaAfter.action, true);
+      throwState.duaFor = null;
+      hud.toast(T.toasts.noDua, "warn", 3);
+      card(T.stoning, { title: T.stoning.title(T.day[h.day - 11]), quiet: true });
+    }
+    const inRange = n.d <= THROW_RANGE;
+    hud.setAction(inRange ? T.throw : nahr ? T.aqaba.hint : T.stoning.hint(want.name), inRange);
+    hud.setCounter({ mode: "jamrah", done: throwState.count, label: `${want.name}: ${De(throwState.count)} من ${De(7)}` });
+  }
+  function stone(p, nahr) {
+    if (throwState.duaFor) {
+      st.dua++;
+      throwState.duaFor = null;
+      card(T.stoning, { title: T.stoning.title(T.day[h.day - 11]), quiet: true });
+      return target(front(MINA_JAMARAT[throwState.order]));
+    }
+    const n = mashair.nearestJamrah(p.x, p.z);
+    if (n.d > THROW_RANGE) return hud.toast(T.toasts.tooFar, "warn", 2.5);
+    const want = MINA_JAMARAT[throwState.order];
+    if (n.j !== want) {
+      if (nahr) st.wrongNahr++, hud.toast(T.toasts.wrongJamrahNahr, "warn", 3.5), speak(T.toasts.wrongJamrahNahr);
+      else st.orderErr++, hud.toast(T.toasts.wrongOrder, "warn", 3.5), speak(T.toasts.wrongOrder);
+      return;
+    }
+    const from = new Vector3();
+    player.rig.children[0].getWorldPosition(from);
+    mashair.throwPebble(from.setY(from.y - 0.25), want);
+    throwState.count++;
+    st.pebbles--;
+    if (nahr) st.aqaba++;
+    else st.tashreeq++;
+    hud.setCounter({ mode: "jamrah", done: throwState.count, label: `${want.name}: ${De(throwState.count)} من ${De(7)}` });
+    if (throwState.count < 7) return;
+    hud.toast(T.toasts.stoned(want.name), "ok", 2.4);
+    if (nahr) return go("hady");
+    throwState.count = 0;
+    throwState.order++;
+    if (throwState.order < 3) {
+      throwState.duaFor = want;
+      card(T.duaAfter);
+      return target(null);
+    }
+    go(h.day === 12 && !st.stayed ? "choice" : h.day >= 13 ? "toWada" : "dayDone");
+  }
+
+  // ——— مع منطق العمرة (09-game.js) ———
+  // بعد سعي الحج، وبعد ركعتي الوداع: يعود الحج
+  game.onStage = (stage) => {
+    if (h.step === "ifadah" && stage === "tahallul") {
+      const d = game.debug();
+      st.ifadah = d.T.valid;
+      st.saiHajj = d.A.lap;
+      st.tawafWarn += d.stats.hijr + d.stats.wrong;
+      game.stage = "hajj";
+      hud.toast(T.fullTahallul, "ok", 3);
+      go("backToMina");
+      return true;
+    }
+    if (h.step === "wada" && stage === "toSafa") {
+      const d = game.debug();
+      st.wada = d.T.valid;
+      st.tawafWarn += d.stats.hijr + d.stats.wrong;
+      finish();
+      return true;
+    }
+    return false;
+  };
+  // بعد تحلّل العمرة يبدأ الحج، بدل ملخص العمرة
+  h.afterUmrah = () => {
+    const d = game.debug();
+    st.umrah = { valid: d.T.valid, warn: d.stats.hijr + d.stats.wrong, sai: d.A.lap };
+    game.stage = "hajj";
+    go("niyyah");
+  };
+
+  h.act = () => {
+    if (h.busy || !h.step || !STEPS[h.step] || !STEPS[h.step].act) return;
+    STEPS[h.step].act(player.getPos());
+  };
+  h.cardBtn = () => !h.busy && STEPS[h.step] && STEPS[h.step].cardBtn && STEPS[h.step].cardBtn();
+  h.update = (dt) => {
+    if (game.stage !== "hajj" || h.busy || !h.step) return;
+    const s = STEPS[h.step];
+    if (s && s.update) s.update(player.getPos(), dt);
+    hud.refreshCardBtn(); // زر «تعلّم سريع» يظهر ما دام الهدف بعيدًا
+  };
+  // «تعلّم سريع» (09-fast.js): يمشي إلى الهدف حيث تحتاج الخطوة مشيًا
+  h.walking = () => game.stage === "hajj" && !h.busy && STEPS[h.step] && STEPS[h.step].walk && !!hud.model.target && !hud.model.action.enabled;
+
+  // القائمة: الانتقال إلى يوم من أيام الحج (يبدأ من الحج نفسه، وعمرة التمتّع لم تُؤدَّ في هذا التدريب)
+  h.jump = (key) => {
+    if (!h.enabled) h.setKind("hajj");
+    h.reset(game.gender);
+    game.stage = "hajj";
+    hud.setAction("", false);
+    const jamarat = (spawn, then) => toMina(spawn, then);
+    if (key === "tarwiyah") travel(null, [dt.xc - 3, dt.marwaZone - 5, 0, 1], "مكة", () => go("niyyah"));
+    else if (key === "arafah") (st.ihram = true), STEPS.toArafah.act();
+    else if (key === "muzdalifah") (st.ihram = st.stood = true), travel("muzdalifah", mashair.sites.muzdalifah.spawns.road, "إلى مزدلفة", () => go("muzPrayer"));
+    else if (key === "nahr") Object.assign(st, { ihram: true, stood: true, muzPrayer: true, muzNight: true, mashar: true, pebbles: 7 }), jamarat("nahr", () => go("aqaba"));
+    else if (key === "tashreeq")
+      Object.assign(st, { ihram: true, stood: true, muzPrayer: true, muzNight: true, mashar: true, hady: true, shave: true }), jamarat("jamarat", () => ((h.day = 11), go("stoning")));
+    else if (key === "wada") go("toWada");
+  };
+
+  function finish() {
+    const yes = "تمّ";
+    const of7 = (n) => `${De(n)} من ${De(7)}`;
+    const u = st.umrah;
+    const rows = [
+      ["عمرة التمتّع", u ? `${of7(u.valid)} طواف، و${of7(u.sai)} سعي` : "—"],
+      ["الإحرام بالحج يوم التروية", st.ihram ? yes : "—"],
+      ["الوقوف بعرفة حتى الغروب", st.stood ? yes : "—"],
+      ["الخروج من حدود عرفة قبل الغروب", De(st.outArafah)],
+      ["المبيت بمزدلفة والذكر عند المشعر الحرام", st.muzNight && st.mashar ? yes : "—"],
+      ["رمي جمرة العقبة يوم النحر", of7(st.aqaba)],
+      ["الهدي، والحلق أو التقصير", st.hady && st.shave ? yes : "—"],
+      ["طواف الإفاضة وسعي الحج", st.ifadah ? `${of7(st.ifadah)}، و${of7(st.saiHajj)}` : "—"],
+      ["رمي الجمرات أيام التشريق", `${De(st.tashreeq)} من ${De(st.tashreeqTotal)}`],
+      ["رمي في غير موضعه أو بغير ترتيب", De(st.wrongNahr + st.orderErr)],
+      ["الدعاء بعد الصغرى والوسطى", `${De(st.dua)} من ${De(st.duaTotal)}`],
+      ["طواف الوداع", of7(st.wada)],
+      ["تنبيهات الطواف: الحِجر وعكس الاتجاه", De(st.tawafWarn + (u ? u.warn : 0))],
+    ];
+    const clean = !st.outArafah && !st.wrongNahr && !st.orderErr && !st.tawafWarn && !(u && u.warn);
+    h.step = null;
+    game.stage = "done";
+    target(null);
+    hud.setCounter({ mode: null });
+    const s = jc(game.gender);
+    h.onFinish && h.onFinish({ title: T.done.title, sub: s.done.sub, rows, note: clean ? T.done.clean : T.done.review });
+  }
+  h.stats = () => ({ ...st, step: h.step, day: h.day, throw: { ...throwState, duaFor: throwState.duaFor && throwState.duaFor.k } });
+  st = fresh();
+  return h;
 }
 // أوضاع التدريب الأربعة. كلها تشترك في المشهد (03-world) والمنطق (09-game) واللاعب (06-player) واللوحات (07-panels).
 // الوضع يقرّر: من أين يأتي النظر والمشي، وكيف يُختار الزر، وكيف يُرسم الإطار.
@@ -9922,6 +11089,8 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
 }
 // التشغيل: الرسّام والمشهد والكاميرا، وربط أزرار الصفحة، وحلقة الإطار. يجب أن يبقى آخر ملف.
 var $id = (id) => document.getElementById(id);
+// بعد إغلاق نافذة بالنقر يبقى التركيز على زرها المخفي لحظة، فتضيع أول ضغطة مسافة (المسافة على زر تخصّه)
+var dropFocus = () => document.activeElement && document.activeElement !== document.body && document.activeElement.blur?.();
 var isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
 document.body.classList.add(isTouch ? "touch" : "mouse");
 var reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -9965,6 +11134,20 @@ var modes = createModes({ renderer, scene, camera, player, hud, panels, game, in
 // ——— الجودة وأوقات المشهد (الطبقتان 0 و1 من docs/realism-plan.md) ———
 var quality = createQuality({ renderer, world });
 var atmosphere = createAtmosphere({ scene, renderer, world });
+// المسجد الحرام كله في مجموعة واحدة: تُخفى في مشاعر الحج (03-mashair.js)، مهما غيّر غيرها ظهور أجزائها
+world.haramRoot = new Group();
+world.haramRoot.name = "haram";
+for (const o of [...scene.children]) if (!o.isLight && o !== world.sky && o.name !== "rig" && o.name !== "board") world.haramRoot.add(o);
+scene.add(world.haramRoot);
+var mashair = createMashair({ scene, world });
+var hajj = createHajj({ game, hud, player, mashair, atmosphere });
+// الحج يتولى الزر الذهبي وإطار المنطق في خطواته (game.stage === "hajj")، وما سواها لمنطق العمرة
+{
+  const act = game.act;
+  const update = game.update;
+  game.act = () => (game.stage === "hajj" ? hajj.act() : act());
+  game.update = (dt) => (update(dt), hajj.update(dt));
+}
 quality.onTier = (tier) => {
   atmosphere.setResolution(tier.shadowRes);
   materials.setKiswaRes(tier.kiswaRes);
@@ -10013,9 +11196,10 @@ atmosphere.setTime(
 );
 
 // زر البطاقة: زر المنسك (انتقل إلى الصفا) إن وُجد، وإلا فزر «تعلّم سريع»
-var fast = createFastLearning({ game, hud, player, world });
+var fast = createFastLearning({ game, hud, player, world, hajj });
 hud.extraBtn = fast.label;
-hud.onCardBtn = () => (game.stage === "done" ? restart() : hud.model.gameBtn ? game.fastToSafa() : fast.run());
+hud.onCardBtn = () =>
+  game.stage === "done" ? restart() : hud.model.gameBtn ? (game.stage === "hajj" ? hajj.cardBtn() : game.fastToSafa()) : fast.run();
 Promise.race([
   Promise.all([
     document.fonts.load('600 40px "Noto Kufi Arabic"'),
@@ -10133,17 +11317,17 @@ function beginTraining() {
   panels.active = true;
   player.rig.position.y = 0;
   player.enabled = true;
+  hajj.reset(gender);
   game.start(gender);
   const hint = startHints[modes.mode];
   if (fromIntro && hint) setTimeout(() => hud.toast(hint, "info", 5), 900);
 }
-// بعد إغلاق نافذة بالنقر يبقى التركيز على زرها المخفي لحظة، فتضيع أول ضغطة مسافة (المسافة على زر تخصّه)
-var dropFocus = () => document.activeElement && document.activeElement !== document.body && document.activeElement.blur?.();
 function restart() {
   dropFocus();
   $id("summary").hidden = true;
   $id("menu").hidden = true;
   player.enabled = true;
+  hajj.reset(gender);
   game.start(gender);
 }
 game.onAgain = restart;
@@ -10171,6 +11355,7 @@ $id("menuVr").addEventListener("click", () => {
 });
 document.querySelectorAll("[data-switch]").forEach((b) =>
   b.addEventListener("click", async () => {
+    dropFocus();
     $id("menu").hidden = true;
     player.enabled = true;
     await modes.enter(b.dataset.switch);
@@ -10205,12 +11390,44 @@ $id("menuClose").addEventListener("click", () => {
 $id("restartBtn").addEventListener("click", restart);
 document.querySelectorAll("[data-jump]").forEach((b) =>
   b.addEventListener("click", () => {
+    dropFocus();
     $id("menu").hidden = true;
     $id("summary").hidden = true;
     player.enabled = true;
+    hajj.reset(gender); // من مشاعر الحج إلى المسجد الحرام
     game.jump(b.dataset.jump);
   }),
 );
+// ——— التدريب على العمرة أو الحج (التمتّع) ———
+var trainingKind = (() => {
+  const q = new URLSearchParams(location.search).get("kind");
+  if (q === "hajj" || q === "umrah") return q;
+  try {
+    if (localStorage.getItem("umrah.kind") === "hajj") return "hajj";
+  } catch {}
+  return "umrah";
+})();
+function chooseKind(kind) {
+  trainingKind = kind;
+  document.querySelectorAll("[data-kind]").forEach((b) => b.setAttribute("aria-checked", b.dataset.kind === kind ? "true" : "false"));
+  document.body.classList.toggle("kind-hajj", kind === "hajj");
+  hajj.setKind(kind);
+  try {
+    localStorage.setItem("umrah.kind", kind);
+  } catch {}
+}
+document.querySelectorAll("[data-kind]").forEach((b) => b.addEventListener("click", () => chooseKind(b.dataset.kind)));
+document.querySelectorAll("[data-kind-switch]").forEach((b) => b.addEventListener("click", () => (chooseKind(b.dataset.kindSwitch), restart())));
+document.querySelectorAll("[data-hajj-jump]").forEach((b) =>
+  b.addEventListener("click", () => {
+    dropFocus();
+    $id("menu").hidden = true;
+    $id("summary").hidden = true;
+    player.enabled = true;
+    hajj.jump(b.dataset.hajjJump);
+  }),
+);
+chooseKind(trainingKind);
 addEventListener("keydown", (e) => {
   if (e.code === "Escape" && !$id("hud").hidden && modes.mode !== "cardboard") {
     const open = $id("menu").hidden;
@@ -10218,7 +11435,7 @@ addEventListener("keydown", (e) => {
     player.enabled = !open;
   }
 });
-game.onFinish = (r) => {
+var showSummary = (r) => {
   $id("sumTitle").textContent = r.title;
   $id("sumSub").textContent = r.sub;
   $id("sumRows").innerHTML = r.rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
@@ -10229,6 +11446,9 @@ game.onFinish = (r) => {
   hud.setRite("end");
   hud.setAction("أعِد التدريب", true);
 };
+// في الحج: بعد تحلّل العمرة تبدأ أيام الحج، والملخص بعد طواف الوداع
+game.onFinish = (r) => (hajj.enabled ? hajj.afterUmrah(r) : showSummary(r));
+hajj.onFinish = showSummary;
 $id("againBtn").addEventListener("click", restart);
 $id("freeBtn").addEventListener("click", () => (dropFocus(), ($id("summary").hidden = true)));
 addEventListener("resize", () => modes.resize());
@@ -10252,6 +11472,7 @@ function step(dt) {
   game.update(dt);
   const pos = player.getPos();
   world.update(dt, pos);
+  mashair.update(dt, hud.time);
   hud.update(dt);
   panels.update(dt, { time: hud.time, pos, heading: player.headingPhi() });
   modes.afterFrame(dt);
@@ -10266,7 +11487,7 @@ renderer.setAnimationLoop(() => {
   step(Math.min(realDt, 0.05));
   modes.render();
 });
-window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, fast, step };
+window.__umrah = { game, player, hud, world, renderer, scene, camera, panels, modes, input, vignette, quality, atmosphere, materials, fast, mashair, hajj, step };
 })();
 
 </script>

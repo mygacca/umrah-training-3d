@@ -141,6 +141,7 @@ button:disabled { cursor: default; }
   background: var(--glass);
   color: var(--ivory);
 }
+body:not(.kind-hajj) .hajj-only,
 body:not([data-mode="mobile"]) .mobile-only,
 body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
 #joy {
