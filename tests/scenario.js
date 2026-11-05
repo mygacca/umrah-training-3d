@@ -168,6 +168,42 @@ function runUmrah(mode) {
         await page.tap('#turnLBtn');
         await D.frames(2);
         assert.ok(Math.abs(angleDiff(await heading(), h2) - SNAP) < 0.02, 'زر الدوران ليس 30°');
+        // بإصبع ثانٍ والإبهام على العصا: الدوران والهرولة يعملان، والعصا تبقى. (كان click لا يصل مع لمستين)
+        const center = async (sel) => {
+          const b = await page.locator(sel).boundingBox();
+          return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+        };
+        const thumb = { x: 100, y: 580, id: 0 };
+        const withThumb = async (sel) => {
+          const f = await center(sel);
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...thumb, y: 620 }] });
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [thumb] });
+          await D.frames(2);
+          const before = await page.evaluate(() => window.__umrah.player.turnedAt);
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [thumb, { ...f, id: 1 }] });
+          await D.frames(2);
+          const st = await page.evaluate(() => ({ turned: window.__umrah.player.turnedAt, jog: window.__umrah.player.jogToggle, joy: window.__umrah.input.joystick.y }));
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); // يرفع الإصبعين
+          return { ...st, turned: st.turned !== before };
+        };
+        const t = await withThumb('#turnRBtn');
+        assert.ok(t.turned, 'زر الدوران لا يعمل والإبهام على العصا');
+        assert.ok(t.joy > 0.5, 'الإصبع الثاني ألغى لمسة العصا');
+        const j = await withThumb('#jogBtn');
+        assert.equal(j.jog, true, 'زر الهرولة لا يعمل والإبهام على العصا');
+        assert.ok(j.joy > 0.5, 'الإصبع الثاني ألغى لمسة العصا');
+        await page.tap('#jogBtn');
+        assert.equal(await page.evaluate(() => window.__umrah.player.jogToggle), false);
+        // الإبقاء على زر الدوران يكرّر الدفعة
+        const yaw = () => page.evaluate(() => window.__umrah.player.yaw); // يتراكم بلا التفاف حول 360°
+        const h3 = await yaw();
+        const r = await center('#turnRBtn');
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [r] });
+        await page.waitForTimeout(1300);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await D.frames(2);
+        const held = h3 - (await yaw());
+        assert.ok(held > 2 * SNAP - 0.05, `الإبقاء على زر الدوران دار ${((held * 180) / Math.PI).toFixed(0)}° فقط`);
       }
       if (mode === 'cardboard') {
         // الصورتان: الكاميرتان جنبًا إلى جنب
