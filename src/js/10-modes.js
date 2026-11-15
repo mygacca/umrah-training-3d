@@ -1,7 +1,8 @@
 // أوضاع التدريب الأربعة. كلها تشترك في المشهد (03-world) والمنطق (09-game) واللاعب (06-player) واللوحات (07-panels).
 // الوضع يقرّر: من أين يأتي النظر والمشي، وكيف يُختار الزر، وكيف يُرسم الإطار.
 //
-//   mobile     الجوال: النظر بالسحب (والمستشعر اختياري)، والمشي بعصا عائمة تحت الإبهام الأيسر، واللمس على اللوحات.
+//   mobile     الجوال: السحب يدير الرأس وحده (والمستشعر اختياري)، وعصا عائمة تحت الإبهام الأيسر تمشي بالجسم وتديره،
+//              واللمس على اللوحات.
 //              والمشي الموجّه (06-guide.js): العصا إلى الأمام تمشي على مسار المنسك والكاميرا تلتفت معه،
 //              و«مشي مستمر» يمشي وحده حتى ما يحتاج منسكًا
 //   cardboard  علبة VR: صورتان جنبًا إلى جنب، والنظر بالمستشعر، والاختيار بالنظر ثانية واحدة أو بلمس الشاشة،
@@ -12,8 +13,12 @@ var MODE_NAMES = { mobile: "الجوال", cardboard: "علبة VR", desktop: "�
 var DWELL_SECONDS = 1; // مدة النظر إلى زر لاختياره في علبة VR
 var CARDBOARD_IPD = 0.064;
 var CARDBOARD_FOV = 75; // زاوية الرؤية الرأسية لكل عين
-var AUTO_TURN_DELAY = 2; // ثانيتان بعد آخر سحب أو دوران قبل أن تلتفت الكاميرا مع المسار
-var AUTO_TURN_RATE = 3; // سرعة التفات الكاميرا مع المسار (لكل ثانية)
+// الجوال: الرأس مستقل عن الجسم (player.head). السحب يدير الرأس، والعصا تمشي بالجسم وتديره
+var HEAD_RETURN_DELAY = 1.2; // ثوانٍ بعد رفع إصبع النظر (أو زر دوران) قبل أن تعود النظرة إلى الأمام أثناء المشي
+var HEAD_RETURN_RATE = 3.5; // سرعة عودة النظرة إلى الأمام (لكل ثانية)
+var BODY_TURN_RATE = 6; // سرعة التفات الجسم مع مسار المنسك (لكل ثانية)
+var STEER_RATE = 2; // راديان في الثانية والعصا إلى أقصى اليمين أو اليسار
+var STEER_DEAD = 0.25; // ميل جانبي أصغر من هذا لا يدير: المشي المستقيم لا يحتاج إبهامًا دقيقًا
 
 function createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle, world }) {
   const { keyboard, pointer, joystick, sensor, gamepad } = input;
@@ -33,7 +38,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
   };
   const guide = createRouteGuide({ game, hud, laneAt: world.crowds.laneAt });
   // حالة المساعدة في الجوال. clock بزمن الإطارات لا بالساعة، فيعمل في الاختبار مع step()
-  const assist = { clock: 0, dragT: -1e9, turnedAt: player.turnedAt, pushing: false, held: false, key: "", enabled: false, stuck: 0, faceTo: null };
+  const assist = { clock: 0, dragT: -1e9, turnedAt: player.turnedAt, pushing: false, moving: false, guided: false, held: false, key: "", enabled: false, stuck: 0, faceTo: null };
   const snapPad = createSnapLatch();
   const snapXR = createSnapLatch();
   let xrAPrev = false;
@@ -185,7 +190,9 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
       // في علبة VR لا سحب، إلا إن لم يوجد مستشعر
       const dragged = player.enabled && (mode !== "cardboard" || player.look === "mouse") && (dy !== 0 || dp !== 0);
       if (dragged) {
-        player.yaw += dy;
+        // في الجوال: السحب يدير الرأس وحده، والجسم يبقى على اتجاه مشيه
+        if (mode === "mobile" && player.look === "mouse") player.turnHead(dy);
+        else player.yaw += dy;
         if (player.look === "mouse") player.pitch = Math.max(-1.25, Math.min(1.1, player.pitch + dp));
       }
       // المشي: لوحة المفاتيح (ومنها أيادي التحكم التي تعمل كلوحة مفاتيح)
@@ -211,18 +218,22 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
       if (mode === "mobile") {
         if (m.autoWalk && joystick.y < -0.3) m.setAutoWalk(false); // العصا إلى الخلف توقفه
         const a = mobileAssist(dt, fwd, side, dragged);
-        return player.update(dt, { forward: a.fwd, strafe: side, dir: a.dir });
+        return player.update(dt, { forward: a.fwd, strafe: a.strafe, dir: a.dir });
       }
     }
     player.update(dt, { forward: fwd, strafe: side });
   };
 
-  // ——— الجوال: المشي الموجّه، والمشي المستمر، والتفات الكاميرا مع المسار ———
+  // ——— الجوال: نظرة الرأس، وتوجيه الجسم بالعصا، والمشي الموجّه، والمشي المستمر ———
+  // العصا: أمام وخلف للمشي باتجاه الجسم، ويمين ويسار لتدير الجسم (وفي المشي الموجّه: تقرّب من المسار أو تبعد).
+  // السحب: يدير الرأس وحده. وأثناء المشي تعود النظرة إلى الأمام بعد رفع الإصبع، فمن يمشي يرى طريقه.
+  // وأول الدفعة بلا توجيه: الجسم يأخذ اتجاه النظر، فـ«الأمام» هو ما يراه اللاعب.
   function mobileAssist(dt, fwd, side, dragged) {
     const a = assist;
     a.clock += dt;
-    // السحب أو زر الدوران: يلتفت اللاعب بنفسه، فلا تلتفت الكاميرا وحدها ثانيتين
-    if (dragged || player.turnedAt !== a.turnedAt) (a.dragT = a.clock), (a.turnedAt = player.turnedAt), (a.faceTo = null);
+    const headLook = player.look === "mouse"; // مع المستشعر الجوال في يد اللاعب يدير النظر، والمشي باتجاهه
+    // إصبع النظر أو زر الدوران: يلتفت اللاعب بنفسه
+    if (dragged || pointer.dragging() || player.turnedAt !== a.turnedAt) (a.dragT = a.clock), (a.turnedAt = player.turnedAt), (a.faceTo = null);
     // الوصول إلى ما يحتاج منسكًا (أضاء الزر الذهبي خارج الطواف، أو تغيّر المنسك أو الهدف):
     // يقف المشي المستمر، ويقف من يدفع العصا حتى يرفع إبهامه، ثم ينظر إلى الحجر الأسود أو الكعبة
     const key = `${game.stage}|${hud.model.target}`;
@@ -237,34 +248,54 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
       a.faceTo = walking && m.guide ? guide.arrivalFace(game.stage) : null;
     }
     if (m.autoWalk) fwd = Math.max(fwd, 1);
+    const steer = Math.abs(side) < STEER_DEAD ? 0 : (Math.sign(side) * (Math.abs(side) - STEER_DEAD)) / (1 - STEER_DEAD);
     const pushing = fwd > 0.08;
+    const moving = Math.abs(fwd) > 0.08;
     const fresh = pushing && !a.pushing;
+    const freshMove = moving && !a.moving;
     a.pushing = pushing;
+    a.moving = moving;
     if (!pushing) a.held = false;
     if (a.held) fwd = 0;
     let dir = null;
     if (m.guide && pushing && !a.held && player.enabled) {
       const p = player.getPos();
       const h = player.headingYaw();
-      dir = guide.direction(p.x, p.z, -Math.sin(h), -Math.cos(h), fresh, side);
+      dir = guide.direction(p.x, p.z, -Math.sin(h), -Math.cos(h), fresh, steer);
     }
     m.guideDir = dir;
-    // الكاميرا تلتفت مع المسار، أو إلى الحجر الأسود بعد الوصول. لا مع المستشعر: الجوال في يد اللاعب يدير النظر
-    let want = null;
-    const p = dir || a.faceTo ? player.getPos() : null;
-    if (dir) (want = Math.atan2(-dir[0], -dir[1])), (a.faceTo = null);
-    else if (a.faceTo && !pushing) want = Math.atan2(-(a.faceTo[0] - p.x), -(a.faceTo[1] - p.z));
-    if (want !== null && player.look === "mouse" && player.enabled && a.clock - a.dragT > AUTO_TURN_DELAY) {
-      const diff = ll(want - player.yaw);
-      player.yaw += diff * Math.min(1, dt * AUTO_TURN_RATE);
-      if (a.faceTo && Math.abs(diff) < 0.02) a.faceTo = null;
+    if (!headLook || !player.enabled) return (a.guided = false), { fwd, dir, strafe: side };
+    const wasGuided = a.guided;
+    a.guided = !!dir;
+
+    if (dir) {
+      // الجسم مع مسار المنسك، والرأس يلتفت عن الجسم: من نظر إلى الكعبة وهو يطوف بقيت أمام عينيه.
+      // وأول الدفعة يأخذ الجسم اتجاه المسار دفعة واحدة والنظر كما هو، ثم تعود النظرة إلى الأمام بهدوء
+      const want = Math.atan2(-dir[0], -dir[1]);
+      if (!wasGuided) (player.head = ll(player.yaw + player.head - want)), (player.yaw = want);
+      else player.yaw += ll(want - player.yaw) * Math.min(1, dt * BODY_TURN_RATE);
+      a.faceTo = null;
+    } else {
+      if (freshMove) player.alignBody();
+      if (steer) (player.yaw -= steer * STEER_RATE * dt), (a.faceTo = null);
+      // بعد الوصول: إلى الحجر الأسود أو الكعبة
+      if (a.faceTo && !moving && a.clock - a.dragT > HEAD_RETURN_DELAY) {
+        const p = player.getPos();
+        player.alignBody();
+        const diff = ll(Math.atan2(-(a.faceTo[0] - p.x), -(a.faceTo[1] - p.z)) - player.yaw);
+        player.yaw += diff * Math.min(1, dt * 3);
+        if (Math.abs(diff) < 0.02) a.faceTo = null;
+      }
     }
+    // النظرة تعود إلى الأمام أثناء المشي، بعد رفع الإصبع
+    if (moving && !a.held && a.clock - a.dragT > HEAD_RETURN_DELAY) player.head *= Math.max(0, 1 - dt * HEAD_RETURN_RATE);
     // المشي المستمر يقف إن علق اللاعب (جدار، أو اتجاه بلا مسار)
-    if (m.autoWalk && player.enabled) {
+    if (m.autoWalk) {
       a.stuck = player.speed < 0.3 ? a.stuck + dt : 0;
       if (a.stuck > 1.2) m.setAutoWalk(false);
     }
-    return { fwd, dir };
+    // في المشي الموجّه العصا الجانبية تقرّب أو تبعد، وبلا توجيه تدير الجسم
+    return { fwd, dir, strafe: dir ? steer : 0 };
   }
 
   // ——— بعد تحديث اللوحات: النظر أو الذراع على الأزرار، وتعتيم الأطراف ———

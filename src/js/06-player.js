@@ -2,6 +2,7 @@
 // لا يقرأ الإدخال بنفسه: الوضع (10-modes.js) يضبط النظر ويمرّر أمر المشي إلى update.
 var EYE_HEIGHT = 1.62;
 var SNAP_ANGLE = Math.PI / 6; // 30° لكل دفعة
+var HEAD_LIMIT = (100 * Math.PI) / 180; // أقصى التفات للرأس عن الجسم إلى كل جهة
 
 function createPlayer({ scene, camera, renderer }) {
   const rig = new Group();
@@ -17,6 +18,9 @@ function createPlayer({ scene, camera, renderer }) {
     look: "mouse",
     yaw: 0, // دوران المنصّة حول المحور الرأسي
     pitch: 0, // ميل الرأس في وضع "mouse" فقط
+    // التفات الرأس عن الجسم في وضع "mouse" (الجوال): النظر يمنة ويسرة، والجسم يمشي في اتجاهه yaw.
+    // اتجاه النظر = yaw + head. والمشي في وضع "mouse" باتجاه الجسم دائمًا
+    head: 0,
     sensorQuat: new Quaternion(), // دوران الكاميرا داخل المنصّة في وضع "sensor"
     slow: false, // سرعات أبطأ وأريح في النظارة وعلبة VR
     jogToggle: false,
@@ -63,13 +67,26 @@ function createPlayer({ scene, camera, renderer }) {
   }
 
   function applyLook() {
-    if (p.look === "mouse") rig.rotation.y = p.yaw, camera.rotation.set(p.pitch, 0, 0);
+    if (p.look === "mouse") rig.rotation.y = p.yaw, camera.rotation.set(p.pitch, p.head, 0, "YXZ");
     else if (p.look === "sensor") rig.rotation.y = p.yaw, camera.quaternion.copy(p.sensorQuat);
   }
 
   p.headingPhi = () => (camera.getWorldDirection(dir), Math.atan2(-dir.z, dir.x));
   p.headingYaw = () => (camera.getWorldDirection(dir), Math.atan2(-dir.x, -dir.z));
   p.getPos = () => (headPos(head), { x: head.x, z: head.z });
+  // اتجاه الجسم (لا النظر) بزاوية الخريطة
+  p.bodyPhi = () => p.headingPhi() - (p.look === "mouse" ? p.head : 0);
+  // يدير الرأس، وما زاد عن حدّه يدير الجسم: من أكمل الالتفات دار جسمه معه
+  p.turnHead = (d) => {
+    const want = p.head + d;
+    p.head = Math.max(-HEAD_LIMIT, Math.min(HEAD_LIMIT, want));
+    p.yaw += want - p.head;
+  };
+  // الجسم يأخذ اتجاه النظر، ولا يتغير ما يُرى
+  p.alignBody = () => {
+    p.yaw += p.head;
+    p.head = 0;
+  };
   p.isJogging = () => p.jogToggle || p.jogKey || p.jogXR || p.jogPad;
 
   // dir: +1 لليسار، -1 لليمين
@@ -95,6 +112,7 @@ function createPlayer({ scene, camera, renderer }) {
     const yaw = Math.atan2(-dx, -dz);
     if (p.look === "mouse") {
       p.yaw = yaw;
+      p.head = 0;
       p.pitch = -0.05;
       rig.position.set(x, 0, z);
     } else {
@@ -119,6 +137,7 @@ function createPlayer({ scene, camera, renderer }) {
     } else {
       if (was === "xr") camera.position.set(0, EYE_HEIGHT, 0), (p.jogXR = false);
       p.pitch = 0;
+      p.head = 0;
       p.faceYaw(yaw);
     }
     lastValid = null;

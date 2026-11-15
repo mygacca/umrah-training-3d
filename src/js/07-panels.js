@@ -1,12 +1,25 @@
 // أدوات رسم مشتركة: الخطوط، وسهم اللاعب، والخريطة المصغّرة Cd، والتفاف النص Qc.
 var ri = '"Noto Kufi Arabic", "Noto Sans Arabic", Tahoma, sans-serif',
   Z_ = '"Amiri", "Noto Naskh Arabic", "Traditional Arabic", serif';
+// سهم اللاعب على الخريطة باتجاه جسمه، ومخروط خفيف لاتجاه نظره (MAP_LOOK: التفات الرأس عن الجسم)
+var MAP_LOOK = 0;
 function Rd(i, t, e, n, s = 1) {
   i.save(),
     i.translate(t, e),
     i.rotate(n),
-    i.scale(s, s),
-    i.beginPath(),
+    i.scale(s, s);
+  if (Math.abs(MAP_LOOK) > 0.05) {
+    i.save();
+    i.rotate(-MAP_LOOK);
+    i.beginPath();
+    i.moveTo(0, 0);
+    i.arc(0, 0, 17, -0.45, 0.45);
+    i.closePath();
+    i.fillStyle = "rgba(240,201,106,0.38)";
+    i.fill();
+    i.restore();
+  }
+  i.beginPath(),
     i.moveTo(8, 0),
     i.lineTo(-5.5, 5),
     i.lineTo(-2.5, 0),
@@ -704,7 +717,9 @@ function createPanels({ scene, camera, model }) {
     {
       const p = flat.card;
       const w = landscapeSmall ? Math.min(380, W - 300) : narrow ? W - 152 : Math.min(440, W - 148);
-      const maxH = (landscapeSmall ? 0.52 : 0.46) * H;
+      // على الشاشة الضيقة القصيرة: البطاقة لا تنزل تحت أزرار الجوال (عمودها 162 بكسل فوق الزر الذهبي)
+      // وفي الأفقي القصير: فوق صف الأزرار (50 بكسل فوق الزر الذهبي)
+      const maxH = landscapeSmall ? Math.max(120, Math.min(0.52 * H, H - 56 - safeT - 152 - safe.b)) : narrow ? Math.max(140, Math.min(0.46 * H, H - 56 - safeT - 278 - safe.b)) : 0.46 * H;
       const o = { narrow, maxH, collapsed: ui.collapsed, hover: ui.hover };
       const m = paintCard(p.ctx, w, s, o, false);
       p.begin(w, m.h, dpr);
@@ -866,7 +881,8 @@ function createPanels({ scene, camera, model }) {
     boardState.placed = true;
   }
 
-  ui.update = (dt, { time = 0, pos = null, heading = 0 } = {}) => {
+  ui.update = (dt, { time = 0, pos = null, heading = 0, look = 0 } = {}) => {
+    MAP_LOOK = look;
     hud.visible = ui.active && ui.kind === "flat";
     board.mesh.visible = ui.active && ui.kind === "board";
     if (!ui.active) return;

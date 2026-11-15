@@ -132,8 +132,8 @@ button:disabled { cursor: default; }
   position: absolute;
   top: calc(8px + var(--safe-t));
   right: 8px;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   border-radius: 12px;
@@ -158,6 +158,10 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
 }
 /* العصا عائمة: تنتقل إلى حيث يضع اللاعب إبهامه (05-input.js)، وتعود إلى هنا حين يرفعه */
 #joy.active { border-color: var(--gold); opacity: 1; }
+/* عموديًّا: فوق صف الزر الذهبي، فعنوانه الطويل يمتد تحت العصا لا فوقها */
+@media (orientation: portrait) {
+  #joy { bottom: calc(24px + 64px + 14px + var(--safe-b)); }
+}
 #knob {
   position: absolute;
   left: 50%;
@@ -169,6 +173,25 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   background: rgba(246, 241, 228, 0.88);
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
 }
+
+/* شرح مناطق اللمس: منطقتان شفافتان فوق المشهد، لا تأخذان اللمس */
+#coach { position: absolute; inset: 0; pointer-events: none !important; }
+.coach-zone {
+  position: absolute;
+  display: grid;
+  place-content: center;
+  gap: 2px;
+  padding: 12px;
+  text-align: center;
+  border: 1.5px dashed rgba(240, 201, 106, 0.85);
+  border-radius: 18px;
+  background: rgba(10, 36, 31, 0.6);
+  color: var(--ivory);
+  font: 500 13px / 1.8 var(--kufi);
+}
+.coach-zone b { font-weight: 800; font-size: 15px; color: var(--gold-hi); }
+.coach-walk { left: 8px; bottom: calc(8px + var(--safe-b)); width: calc(50% - 12px); height: 42%; }
+.coach-look { right: 8px; top: 34%; width: calc(50% - 12px); height: 20%; }
 
 /* فوق الزر الذهبي المرسوم في المشهد (64px أسفل اليمين) */
 #actions {
