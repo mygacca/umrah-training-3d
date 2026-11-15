@@ -42,7 +42,7 @@
       </div>
     </div>
     <div class="mode-note" data-for="mobile" hidden>
-      <p class="fine">العصا تحت إبهامك الأيسر: إلى الأمام تمشي، ويمينًا ويسارًا تدور. واسحب على الشاشة لتلتفت برأسك وجسمك يكمل طريقه.</p>
+      <p class="fine">العصا تحت إبهامك الأيسر: إلى الأمام تمشي، ويمينًا ويسارًا تدور. وشريط «زاوية النظر» يلتفت برأسك وجسمك يكمل طريقه، و✓ بجانبه يعيد النظرة إلى الأمام.</p>
       <div class="opts">
         <label class="sw"><input type="checkbox" data-opt="guide" checked><span class="track"></span><span>المشي الموجّه</span></label>
         <label class="sw"><input type="checkbox" data-opt="gyro"><span class="track"></span><span>النظر بتحريك الجوال</span></label>
@@ -94,15 +94,18 @@
 
   <!-- شرح مناطق اللمس عند أول بدء في الجوال، ومن القائمة. لا يأخذ اللمس -->
   <div id="coach" class="mobile-only" hidden aria-hidden="true">
-    <div class="coach-zone coach-look"><b>النظر</b><span>اسحب هنا لتلتفت برأسك، وجسمك يكمل طريقه</span></div>
+    <div class="coach-zone coach-look"><b>زاوية النظر</b><span>حرّك الشريط لتلتفت برأسك وجسمك يكمل طريقه، و✓ يعيد النظرة إلى الأمام</span></div>
     <div class="coach-zone coach-walk"><b>العصا</b><span>ضع إبهامك هنا: إلى الأمام تمشي، ويمينًا ويسارًا تدور</span></div>
   </div>
 
+  <!-- زاوية النظر: التفات الرأس عن الجسم. لا تعود وحدها، و✓ يعيدها إلى الأمام. dir=ltr: يسار الشريط نظر إلى اليسار -->
+  <div id="lookBar" class="mobile-only" dir="ltr">
+    <span id="lookLabel">زاوية النظر</span>
+    <div id="lookTrack" role="slider" tabindex="0" aria-labelledby="lookLabel" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><i></i><div id="lookThumb"></div></div>
+    <button type="button" id="lookReset" aria-label="أعِد النظرة إلى الأمام">✓</button>
+  </div>
+
   <div id="actions" class="mobile-only">
-    <div class="turns">
-      <button type="button" id="turnRBtn" aria-label="دُر يمينًا">⟳</button>
-      <button type="button" id="turnLBtn" aria-label="دُر يسارًا">⟲</button>
-    </div>
     <button type="button" id="autoWalkBtn" aria-pressed="false">مشي مستمر</button>
     <button type="button" id="jogBtn" aria-pressed="false">هرولة</button>
   </div>
@@ -174,8 +177,7 @@
     <h3>التحكّم</h3>
     <dl class="keys mobile-only">
       <div><dt>العصا</dt><dd>ضع إبهامك الأيسر في أي مكان أسفل يسار الشاشة: إلى الأمام والخلف تمشي، ويمينًا ويسارًا يدور جسمك. ومع «المشي الموجّه» يتبع المشي مسار المنسك، والجانبان يقرّبانك منه أو يبعدانك</dd></div>
-      <div><dt>النظر</dt><dd>اسحب على الشاشة لتلتفت برأسك يمنة ويسرة وجسمك يكمل طريقه. وأثناء المشي تعود النظرة إلى الأمام حين ترفع إصبعك، وتبقى ما دام على الشاشة. ومن أكمل الالتفات دار جسمه معه</dd></div>
-      <div><dt>زرّا الدوران</dt><dd>يديران الجسم 30°، ويتكرر الدوران ما دام الإصبع على الزر</dd></div>
+      <div><dt>زاوية النظر</dt><dd>حرّك الشريط لتلتفت برأسك يمنة ويسرة وجسمك يكمل طريقه. تبقى النظرة حيث تركتها، و✓ بجانب الشريط يعيدها إلى الأمام. والسحب على الشاشة يلتفت أيضًا، وينظر إلى أعلى وأسفل</dd></div>
       <div><dt>مشي مستمر</dt><dd>يمشي وحده حتى ما يحتاج منسكًا، ويقف بالزر نفسه أو بسحب العصا إلى الخلف</dd></div>
       <div><dt>المنسك</dt><dd>المس الزر الذهبي حين يضيء</dd></div>
       <div><dt>الهرولة</dt><dd>زر الهرولة، ويبقى مفعّلًا حتى تضغطه ثانية</dd></div>
