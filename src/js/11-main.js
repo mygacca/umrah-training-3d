@@ -35,6 +35,7 @@ var input = {
   keyboard: createKeyboard(),
   pointer: createPointer($id("c")),
   joystick: createJoystick($id("joy"), $id("knob")),
+  lookSlider: createLookSlider($id("lookTrack"), $id("lookThumb")),
   sensor: createOrientationSensor(),
   gamepad: createGamepadReader(),
 };
@@ -189,10 +190,12 @@ function saveFlag(key, on) {
   } catch {}
 }
 modes.gyro = savedFlag("umrah.gyro", false);
+// مع المستشعر الجوال نفسه يدير النظر: لا شريط لزاوية النظر
+document.body.classList.toggle("gyro-look", modes.gyro);
 modes.setGuide(savedFlag("umrah.guide", true));
 syncOpt("gyro", modes.gyro);
 syncOpt("guide", modes.guide);
-bindOpt("gyro", (on) => (modes.setGyro(on), saveFlag("umrah.gyro", on)));
+bindOpt("gyro", (on) => (modes.setGyro(on), saveFlag("umrah.gyro", on), document.body.classList.toggle("gyro-look", on)));
 bindOpt("guide", (on) => (modes.setGuide(on), saveFlag("umrah.guide", on)));
 // «تعلّم سريع» (09-fast.js): زر في البطاقة يمشي الأشواط والمسافات الطويلة
 fast.enabled = savedFlag("umrah.fast", false);
@@ -307,9 +310,8 @@ modes.onAutoWalk = (on) => {
   $id("autoWalkBtn").classList.toggle("on", on);
   $id("autoWalkBtn").setAttribute("aria-pressed", on ? "true" : "false");
 };
-// الإبقاء على زر الدوران يكرّر الدفعة (30°) كل ثلث ثانية
-createPressButton($id("turnLBtn"), () => player.snapTurn(1), { repeat: 330 });
-createPressButton($id("turnRBtn"), () => player.snapTurn(-1), { repeat: 330 });
+// ✓ بجانب شريط زاوية النظر: النظرة إلى الأمام
+createPressButton($id("lookReset"), () => modes.centerLook());
 $id("menuBtn").addEventListener("click", () => {
   $id("menu").hidden = false;
   player.enabled = false;

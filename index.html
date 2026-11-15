@@ -198,8 +198,9 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   font: 500 13px / 1.8 var(--kufi);
 }
 .coach-zone b { font-weight: 800; font-size: 15px; color: var(--gold-hi); }
-.coach-walk { left: 8px; bottom: calc(8px + var(--safe-b)); width: calc(50% - 12px); height: 42%; }
-.coach-look { right: 8px; top: 34%; width: calc(50% - 12px); height: 20%; }
+/* العصا: تحت شريط زاوية النظر. والنظر: فوق الشريط مباشرة */
+.coach-walk { left: 8px; bottom: calc(8px + var(--safe-b)); width: calc(50% - 12px); height: 226px; }
+.coach-look { left: 8px; right: 8px; bottom: calc(24px + 64px + 14px + 128px + 12px + 66px + var(--safe-b)); height: 84px; }
 
 /* فوق الزر الذهبي المرسوم في المشهد (64px أسفل اليمين) */
 #actions {
@@ -216,16 +217,70 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
 /* بلا إيماءات المتصفح: إصبع ثانٍ على زر كان يبدأ إيماءة تكبير، فيُلغي لمسة العصا والزر معًا */
 #actions button, #joy { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #actions button.pressed { transform: scale(0.93); background: rgba(214, 176, 98, 0.55); }
-.turns { display: flex; gap: 10px; }
-.turns button {
-  width: 50px;
-  height: 50px;
-  border-radius: 25px;
+/* شريط زاوية النظر: صف فوق العصا والأزرار. المقبض في الوسط = النظر إلى الأمام، و✓ يعيده إليه */
+#lookBar {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(24px + 64px + 14px + 128px + 12px + var(--safe-b));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  pointer-events: none !important;
+}
+#lookBar > * { pointer-events: auto; }
+body.gyro-look #lookBar { display: none !important; }
+#lookLabel {
+  flex: 0 0 100%;
+  text-align: center;
+  font: 600 11.5px / 16px var(--kufi);
+  color: var(--ivory);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+  pointer-events: none !important;
+}
+#lookTrack {
+  position: relative;
+  flex: 1;
+  height: 44px;
+  border-radius: 22px;
   border: 1px solid rgba(246, 241, 228, 0.4);
   background: rgba(10, 36, 31, 0.6);
-  color: var(--ivory);
-  font: 600 20px/1 var(--kufi);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
+/* الخط، وعلامة الوسط (الأمام) */
+#lookTrack i { position: absolute; left: 22px; right: 22px; top: 50%; height: 3px; margin-top: -1.5px; border-radius: 2px; background: rgba(246, 241, 228, 0.35); }
+#lookTrack::after { content: ""; position: absolute; left: 50%; top: 9px; bottom: 9px; width: 2px; margin-left: -1px; background: rgba(246, 241, 228, 0.6); }
+#lookThumb {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  background: rgba(246, 241, 228, 0.92);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+#lookTrack.off-center #lookThumb { background: var(--gold-hi); }
+#lookReset {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  border: 1px solid rgba(246, 241, 228, 0.4);
+  background: rgba(10, 36, 31, 0.6);
+  color: rgba(246, 241, 228, 0.55);
+  font: 800 19px/1 var(--kufi);
+  touch-action: none;
+}
+/* النظر ليس إلى الأمام: ✓ يضيء */
+#lookTrack.off-center + #lookReset { background: var(--gold); color: var(--deep); border-color: var(--gold); }
+#lookReset.pressed { transform: scale(0.93); }
 #jogBtn, #autoWalkBtn {
   height: 46px;
   padding: 0 18px;
@@ -318,6 +373,10 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
   #joy { width: 110px; height: 110px; bottom: calc(14px + var(--safe-b)); }
   /* أفقي: الأزرار صفًّا واحدًا فوق الزر الذهبي، فلا تغطي البطاقة */
   #actions { bottom: calc(14px + 64px + 10px + var(--safe-b)); flex-direction: row; align-items: center; }
+  /* وشريط زاوية النظر أسفل الوسط، بين العصا والزر الذهبي (عرضه حتى 40% من الشاشة) */
+  #lookBar { left: 148px; right: calc(18px + 40vw + 12px); bottom: calc(14px + var(--safe-b)); }
+  .coach-walk { width: 132px; height: 150px; }
+  .coach-look { left: 148px; right: calc(18px + 40vw + 12px); bottom: calc(14px + 66px + var(--safe-b)); height: 84px; }
 }
 
 #fail { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--deep); text-align: center; font: 500 16px / 1.9 var(--kufi); }
@@ -363,7 +422,7 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
       </div>
     </div>
     <div class="mode-note" data-for="mobile" hidden>
-      <p class="fine">العصا تحت إبهامك الأيسر: إلى الأمام تمشي، ويمينًا ويسارًا تدور. واسحب على الشاشة لتلتفت برأسك وجسمك يكمل طريقه.</p>
+      <p class="fine">العصا تحت إبهامك الأيسر: إلى الأمام تمشي، ويمينًا ويسارًا تدور. وشريط «زاوية النظر» يلتفت برأسك وجسمك يكمل طريقه، و✓ بجانبه يعيد النظرة إلى الأمام.</p>
       <div class="opts">
         <label class="sw"><input type="checkbox" data-opt="guide" checked><span class="track"></span><span>المشي الموجّه</span></label>
         <label class="sw"><input type="checkbox" data-opt="gyro"><span class="track"></span><span>النظر بتحريك الجوال</span></label>
@@ -415,15 +474,18 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
 
   <!-- شرح مناطق اللمس عند أول بدء في الجوال، ومن القائمة. لا يأخذ اللمس -->
   <div id="coach" class="mobile-only" hidden aria-hidden="true">
-    <div class="coach-zone coach-look"><b>النظر</b><span>اسحب هنا لتلتفت برأسك، وجسمك يكمل طريقه</span></div>
+    <div class="coach-zone coach-look"><b>زاوية النظر</b><span>حرّك الشريط لتلتفت برأسك وجسمك يكمل طريقه، و✓ يعيد النظرة إلى الأمام</span></div>
     <div class="coach-zone coach-walk"><b>العصا</b><span>ضع إبهامك هنا: إلى الأمام تمشي، ويمينًا ويسارًا تدور</span></div>
   </div>
 
+  <!-- زاوية النظر: التفات الرأس عن الجسم. لا تعود وحدها، و✓ يعيدها إلى الأمام. dir=ltr: يسار الشريط نظر إلى اليسار -->
+  <div id="lookBar" class="mobile-only" dir="ltr">
+    <span id="lookLabel">زاوية النظر</span>
+    <div id="lookTrack" role="slider" tabindex="0" aria-labelledby="lookLabel" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><i></i><div id="lookThumb"></div></div>
+    <button type="button" id="lookReset" aria-label="أعِد النظرة إلى الأمام">✓</button>
+  </div>
+
   <div id="actions" class="mobile-only">
-    <div class="turns">
-      <button type="button" id="turnRBtn" aria-label="دُر يمينًا">⟳</button>
-      <button type="button" id="turnLBtn" aria-label="دُر يسارًا">⟲</button>
-    </div>
     <button type="button" id="autoWalkBtn" aria-pressed="false">مشي مستمر</button>
     <button type="button" id="jogBtn" aria-pressed="false">هرولة</button>
   </div>
@@ -495,8 +557,7 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
     <h3>التحكّم</h3>
     <dl class="keys mobile-only">
       <div><dt>العصا</dt><dd>ضع إبهامك الأيسر في أي مكان أسفل يسار الشاشة: إلى الأمام والخلف تمشي، ويمينًا ويسارًا يدور جسمك. ومع «المشي الموجّه» يتبع المشي مسار المنسك، والجانبان يقرّبانك منه أو يبعدانك</dd></div>
-      <div><dt>النظر</dt><dd>اسحب على الشاشة لتلتفت برأسك يمنة ويسرة وجسمك يكمل طريقه. وأثناء المشي تعود النظرة إلى الأمام حين ترفع إصبعك، وتبقى ما دام على الشاشة. ومن أكمل الالتفات دار جسمه معه</dd></div>
-      <div><dt>زرّا الدوران</dt><dd>يديران الجسم 30°، ويتكرر الدوران ما دام الإصبع على الزر</dd></div>
+      <div><dt>زاوية النظر</dt><dd>حرّك الشريط لتلتفت برأسك يمنة ويسرة وجسمك يكمل طريقه. تبقى النظرة حيث تركتها، و✓ بجانب الشريط يعيدها إلى الأمام. والسحب على الشاشة يلتفت أيضًا، وينظر إلى أعلى وأسفل</dd></div>
       <div><dt>مشي مستمر</dt><dd>يمشي وحده حتى ما يحتاج منسكًا، ويقف بالزر نفسه أو بسحب العصا إلى الخلف</dd></div>
       <div><dt>المنسك</dt><dd>المس الزر الذهبي حين يضيء</dd></div>
       <div><dt>الهرولة</dt><dd>زر الهرولة، ويبقى مفعّلًا حتى تضغطه ثانية</dd></div>
@@ -8307,6 +8368,63 @@ function createPressButton(el, fn, { repeat = 0 } = {}) {
   el.addEventListener("lostpointercapture", stop);
   el.addEventListener("click", (e) => e.detail === 0 && fn());
 }
+
+// شريط «زاوية النظر» في الجوال: موضع المقبض هو التفات الرأس عن الجسم، ولا يتحرك وحده.
+// value بين -1 و1: الموجب إلى اليسار (يسار الشريط = النظر يسارًا). active: إصبع على الشريط الآن.
+// باللمس المباشر (pointer) لا بعنصر range: يعمل بإصبع ثانٍ والإبهام على العصا، ولا يبدأ إيماءة تكبير.
+function createLookSlider(track, thumb) {
+  const s = { value: 0, active: false, onInput: null };
+  let id = null;
+  const show = (v) => {
+    thumb.style.left = `${(1 - v) * 50}%`;
+    track.setAttribute("aria-valuenow", String(Math.round(-v * 100)));
+    track.classList.toggle("off-center", Math.abs(v) > 0.02);
+  };
+  const fromEvent = (e) => {
+    const r = track.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    let v = 1 - 2 * f;
+    if (Math.abs(v) < 0.06) v = 0; // قرب الوسط: إلى الأمام تمامًا
+    s.value = v;
+    show(v);
+    if (s.onInput) s.onInput(v);
+  };
+  track.addEventListener("pointerdown", (e) => {
+    if (id !== null) return;
+    e.preventDefault();
+    id = e.pointerId;
+    s.active = true;
+    track.setPointerCapture?.(e.pointerId);
+    fromEvent(e);
+  });
+  track.addEventListener("pointermove", (e) => e.pointerId === id && fromEvent(e));
+  const end = (e) => {
+    if (e.pointerId !== id) return;
+    id = null;
+    s.active = false;
+  };
+  track.addEventListener("pointerup", end);
+  track.addEventListener("pointercancel", end);
+  track.addEventListener("lostpointercapture", end);
+  // لوحة المفاتيح: السهمان عشر الشريط
+  track.addEventListener("keydown", (e) => {
+    const d = e.code === "ArrowLeft" ? 0.1 : e.code === "ArrowRight" ? -0.1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    s.value = Math.max(-1, Math.min(1, s.value + d));
+    show(s.value);
+    if (s.onInput) s.onInput(s.value);
+  });
+  // من غير الشريط (السحب على الشاشة، أو ✓): المقبض يتبع
+  s.set = (v) => {
+    v = Math.max(-1, Math.min(1, v));
+    if (v === s.value || (v !== 0 && Math.abs(v - s.value) < 1e-4)) return; // الصفر تمامًا: المقبض في الوسط تمامًا
+    s.value = v;
+    show(v);
+  };
+  show(0);
+  return s;
+}
 // مستويات الجودة (الطبقة 0 من docs/realism-plan.md).
 // المستوى يُختار تلقائيًا بحسب الوضع، ويُغيَّر من القائمة. ونسبة البكسل تتكيّف مع سرعة الإطارات:
 // تنخفض إن بقيت الإطارات بطيئة ثانيتين، وترتفع ببطء إن عادت سريعة. وفي النظارة يزيد التنقيط المركزي بدلها.
@@ -9468,9 +9586,9 @@ function createPanels({ scene, camera, model }) {
     {
       const p = flat.card;
       const w = landscapeSmall ? Math.min(380, W - 300) : narrow ? W - 152 : Math.min(440, W - 148);
-      // على الشاشة الضيقة القصيرة: البطاقة لا تنزل تحت أزرار الجوال (عمودها 162 بكسل فوق الزر الذهبي)
+      // على الشاشة الضيقة القصيرة: البطاقة لا تنزل تحت شريط زاوية النظر (أعلاه 302 بكسل من أسفل الشاشة)
       // وفي الأفقي القصير: فوق صف الأزرار (50 بكسل فوق الزر الذهبي)
-      const maxH = landscapeSmall ? Math.max(120, Math.min(0.52 * H, H - 56 - safeT - 152 - safe.b)) : narrow ? Math.max(140, Math.min(0.46 * H, H - 56 - safeT - 278 - safe.b)) : 0.46 * H;
+      const maxH = landscapeSmall ? Math.max(120, Math.min(0.52 * H, H - 56 - safeT - 152 - safe.b)) : narrow ? Math.max(140, Math.min(0.46 * H, H - 56 - safeT - 310 - safe.b)) : 0.46 * H;
       const o = { narrow, maxH, collapsed: ui.collapsed, hover: ui.hover };
       const m = paintCard(p.ctx, w, s, o, false);
       p.begin(w, m.h, dpr);
@@ -9485,7 +9603,8 @@ function createPanels({ scene, camera, model }) {
       if (!s.action.label) p.mesh.visible = false;
       else {
         p.ctx.font = `800 15px ${ri}`;
-        const w = Math.round(Math.min(0.62 * W, Math.max(150, p.ctx.measureText(s.action.label).width + 48)));
+        // في الأفقي القصير: حتى 40% من العرض، فيبقى مكان لشريط زاوية النظر بين العصا والزر
+        const w = Math.round(Math.min((landscapeSmall ? 0.4 : 0.62) * W, Math.max(150, p.ctx.measureText(s.action.label).width + 48)));
         const h = 64;
         p.begin(w, h, dpr);
         paintAction(p.ctx, w, h, s, { hint: ui.hint, hover: ui.hover === "action" });
@@ -10784,14 +10903,15 @@ var DWELL_SECONDS = 1; // مدة النظر إلى زر لاختياره في ع
 var CARDBOARD_IPD = 0.064;
 var CARDBOARD_FOV = 75; // زاوية الرؤية الرأسية لكل عين
 // الجوال: الرأس مستقل عن الجسم (player.head). السحب يدير الرأس، والعصا تمشي بالجسم وتديره
-var HEAD_RETURN_DELAY = 1.2; // ثوانٍ بعد رفع إصبع النظر (أو زر دوران) قبل أن تعود النظرة إلى الأمام أثناء المشي
-var HEAD_RETURN_RATE = 3.5; // سرعة عودة النظرة إلى الأمام (لكل ثانية)
+// زاوية النظر (الشريط أو السحب) لا تعود وحدها: تبقى حتى يضغط اللاعب ✓ (m.centerLook)
+var LOOK_CENTER_RATE = 8; // سرعة عودة النظرة إلى الأمام بعد ✓ (لكل ثانية)
+var FACE_DELAY = 1.2; // ثوانٍ بعد آخر سحب قبل أن يلتفت الجسم إلى الحجر الأسود عند الوصول
 var BODY_TURN_RATE = 6; // سرعة التفات الجسم مع مسار المنسك (لكل ثانية)
 var STEER_RATE = 2; // راديان في الثانية والعصا إلى أقصى اليمين أو اليسار
 var STEER_DEAD = 0.25; // ميل جانبي أصغر من هذا لا يدير: المشي المستقيم لا يحتاج إبهامًا دقيقًا
 
 function createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle, world }) {
-  const { keyboard, pointer, joystick, sensor, gamepad } = input;
+  const { keyboard, pointer, joystick, sensor, gamepad, lookSlider } = input;
   const m = {
     mode: "desktop",
     comfort: false, // الحركة المريحة: تعتيم الأطراف، والدوران على دفعات بالأسهم
@@ -10808,7 +10928,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
   };
   const guide = createRouteGuide({ game, hud, laneAt: world.crowds.laneAt });
   // حالة المساعدة في الجوال. clock بزمن الإطارات لا بالساعة، فيعمل في الاختبار مع step()
-  const assist = { clock: 0, dragT: -1e9, turnedAt: player.turnedAt, pushing: false, moving: false, guided: false, held: false, key: "", enabled: false, stuck: 0, faceTo: null };
+  const assist = { clock: 0, dragT: -1e9, turnedAt: player.turnedAt, pushing: false, centering: false, held: false, key: "", enabled: false, stuck: 0, faceTo: null };
   const snapPad = createSnapLatch();
   const snapXR = createSnapLatch();
   let xrAPrev = false;
@@ -10873,6 +10993,16 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     m.gyro = on;
     if (on) sensor.start();
     else if (m.mode === "mobile" && player.look === "sensor") player.setLook("mouse");
+  };
+  // ✓ بجانب شريط زاوية النظر: النظرة تعود إلى الأمام
+  m.centerLook = () => (assist.centering = true);
+  // الشريط يضبط التفات الرأس لحظة اللمس (لمسة قصيرة قد تبدأ وتنتهي بين إطارين). والمقبض يتبع السحب على الشاشة كل إطار
+  lookSlider.onInput = (v) => {
+    if (m.mode !== "mobile" || player.look !== "mouse" || !player.enabled) return;
+    player.head = v * HEAD_LIMIT;
+    assist.centering = false;
+    assist.dragT = assist.clock;
+    assist.faceTo = null;
   };
   m.setGuide = (on) => {
     m.guide = on;
@@ -11002,8 +11132,10 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     const a = assist;
     a.clock += dt;
     const headLook = player.look === "mouse"; // مع المستشعر الجوال في يد اللاعب يدير النظر، والمشي باتجاهه
-    // إصبع النظر أو زر الدوران: يلتفت اللاعب بنفسه
-    if (dragged || pointer.dragging() || player.turnedAt !== a.turnedAt) (a.dragT = a.clock), (a.turnedAt = player.turnedAt), (a.faceTo = null);
+    // إصبع النظر على الشاشة أو على الشريط: يلتفت اللاعب بنفسه
+    const looking = dragged || pointer.dragging() || lookSlider.active;
+    if (looking || player.turnedAt !== a.turnedAt) (a.dragT = a.clock), (a.turnedAt = player.turnedAt), (a.faceTo = null);
+    if (looking) a.centering = false;
     // الوصول إلى ما يحتاج منسكًا (أضاء الزر الذهبي خارج الطواف، أو تغيّر المنسك أو الهدف):
     // يقف المشي المستمر، ويقف من يدفع العصا حتى يرفع إبهامه، ثم ينظر إلى الحجر الأسود أو الكعبة
     const key = `${game.stage}|${hud.model.target}`;
@@ -11022,9 +11154,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     const pushing = fwd > 0.08;
     const moving = Math.abs(fwd) > 0.08;
     const fresh = pushing && !a.pushing;
-    const freshMove = moving && !a.moving;
     a.pushing = pushing;
-    a.moving = moving;
     if (!pushing) a.held = false;
     if (a.held) fwd = 0;
     let dir = null;
@@ -11034,31 +11164,28 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
       dir = guide.direction(p.x, p.z, -Math.sin(h), -Math.cos(h), fresh, steer);
     }
     m.guideDir = dir;
-    if (!headLook || !player.enabled) return (a.guided = false), { fwd, dir, strafe: side };
-    const wasGuided = a.guided;
-    a.guided = !!dir;
+    if (!headLook || !player.enabled) return { fwd, dir, strafe: side };
 
     if (dir) {
-      // الجسم مع مسار المنسك، والرأس يلتفت عن الجسم: من نظر إلى الكعبة وهو يطوف بقيت أمام عينيه.
-      // وأول الدفعة يأخذ الجسم اتجاه المسار دفعة واحدة والنظر كما هو، ثم تعود النظرة إلى الأمام بهدوء
-      const want = Math.atan2(-dir[0], -dir[1]);
-      if (!wasGuided) (player.head = ll(player.yaw + player.head - want)), (player.yaw = want);
-      else player.yaw += ll(want - player.yaw) * Math.min(1, dt * BODY_TURN_RATE);
+      // الجسم مع مسار المنسك، والرأس عنه كما ضبطه اللاعب: من نظر إلى الكعبة وهو يطوف بقيت أمام عينيه
+      player.yaw += ll(Math.atan2(-dir[0], -dir[1]) - player.yaw) * Math.min(1, dt * BODY_TURN_RATE);
       a.faceTo = null;
     } else {
-      if (freshMove) player.alignBody();
       if (steer) (player.yaw -= steer * STEER_RATE * dt), (a.faceTo = null);
-      // بعد الوصول: إلى الحجر الأسود أو الكعبة
-      if (a.faceTo && !moving && a.clock - a.dragT > HEAD_RETURN_DELAY) {
+      // بعد الوصول: الجسم إلى الحجر الأسود أو الكعبة
+      if (a.faceTo && !moving && a.clock - a.dragT > FACE_DELAY) {
         const p = player.getPos();
-        player.alignBody();
         const diff = ll(Math.atan2(-(a.faceTo[0] - p.x), -(a.faceTo[1] - p.z)) - player.yaw);
         player.yaw += diff * Math.min(1, dt * 3);
         if (Math.abs(diff) < 0.02) a.faceTo = null;
       }
     }
-    // النظرة تعود إلى الأمام أثناء المشي، بعد رفع الإصبع
-    if (moving && !a.held && a.clock - a.dragT > HEAD_RETURN_DELAY) player.head *= Math.max(0, 1 - dt * HEAD_RETURN_RATE);
+    // ✓: النظرة إلى الأمام
+    if (a.centering) {
+      player.head *= Math.max(0, 1 - dt * LOOK_CENTER_RATE);
+      if (Math.abs(player.head) < 0.005) (player.head = 0), (a.centering = false);
+    }
+    lookSlider.set(player.head / HEAD_LIMIT);
     // المشي المستمر يقف إن علق اللاعب (جدار، أو اتجاه بلا مسار)
     if (m.autoWalk) {
       a.stuck = player.speed < 0.3 ? a.stuck + dt : 0;
@@ -11222,6 +11349,7 @@ var input = {
   keyboard: createKeyboard(),
   pointer: createPointer($id("c")),
   joystick: createJoystick($id("joy"), $id("knob")),
+  lookSlider: createLookSlider($id("lookTrack"), $id("lookThumb")),
   sensor: createOrientationSensor(),
   gamepad: createGamepadReader(),
 };
@@ -11376,10 +11504,12 @@ function saveFlag(key, on) {
   } catch {}
 }
 modes.gyro = savedFlag("umrah.gyro", false);
+// مع المستشعر الجوال نفسه يدير النظر: لا شريط لزاوية النظر
+document.body.classList.toggle("gyro-look", modes.gyro);
 modes.setGuide(savedFlag("umrah.guide", true));
 syncOpt("gyro", modes.gyro);
 syncOpt("guide", modes.guide);
-bindOpt("gyro", (on) => (modes.setGyro(on), saveFlag("umrah.gyro", on)));
+bindOpt("gyro", (on) => (modes.setGyro(on), saveFlag("umrah.gyro", on), document.body.classList.toggle("gyro-look", on)));
 bindOpt("guide", (on) => (modes.setGuide(on), saveFlag("umrah.guide", on)));
 // «تعلّم سريع» (09-fast.js): زر في البطاقة يمشي الأشواط والمسافات الطويلة
 fast.enabled = savedFlag("umrah.fast", false);
@@ -11494,9 +11624,8 @@ modes.onAutoWalk = (on) => {
   $id("autoWalkBtn").classList.toggle("on", on);
   $id("autoWalkBtn").setAttribute("aria-pressed", on ? "true" : "false");
 };
-// الإبقاء على زر الدوران يكرّر الدفعة (30°) كل ثلث ثانية
-createPressButton($id("turnLBtn"), () => player.snapTurn(1), { repeat: 330 });
-createPressButton($id("turnRBtn"), () => player.snapTurn(-1), { repeat: 330 });
+// ✓ بجانب شريط زاوية النظر: النظرة إلى الأمام
+createPressButton($id("lookReset"), () => modes.centerLook());
 $id("menuBtn").addEventListener("click", () => {
   $id("menu").hidden = false;
   player.enabled = false;
