@@ -27,7 +27,8 @@ function createPointer(canvas) {
   canvas.addEventListener("pointerdown", (e) => {
     if (!p.enabled) return;
     if (p.claim && p.claim(e)) return;
-    active.set(e.pointerId, { x: e.clientX, y: e.clientY, t0: performance.now(), touch: e.pointerType !== "mouse", moved: 0 });
+    // t0 وقت وقوع اللمسة (e.timeStamp) لا وقت معالجتها: إطار بطيء بين اللمس والرفع لا يحوّل النقرة إلى ضغطة طويلة
+    active.set(e.pointerId, { x: e.clientX, y: e.clientY, t0: e.timeStamp, touch: e.pointerType !== "mouse", moved: 0 });
     canvas.setPointerCapture?.(e.pointerId);
   });
   canvas.addEventListener("pointermove", (e) => {
@@ -46,7 +47,7 @@ function createPointer(canvas) {
     const s = active.get(e.pointerId);
     if (!s) return;
     active.delete(e.pointerId);
-    if (tap && s.moved < 10 && performance.now() - s.t0 < 600 && p.onTap) p.onTap(e.clientX, e.clientY, e);
+    if (tap && s.moved < 10 && e.timeStamp - s.t0 < 600 && p.onTap) p.onTap(e.clientX, e.clientY, e);
   };
   canvas.addEventListener("pointerup", (e) => end(e, true));
   canvas.addEventListener("pointercancel", (e) => end(e, false));
@@ -233,59 +234,28 @@ function createPressButton(el, fn, { repeat = 0 } = {}) {
   el.addEventListener("click", (e) => e.detail === 0 && fn());
 }
 
-// شريط «زاوية النظر» في الجوال: موضع المقبض هو التفات الرأس عن الجسم، ولا يتحرك وحده.
-// value بين -1 و1: الموجب إلى اليسار (يسار الشريط = النظر يسارًا). active: إصبع على الشريط الآن.
-// باللمس المباشر (pointer) لا بعنصر range: يعمل بإصبع ثانٍ والإبهام على العصا، ولا يبدأ إيماءة تكبير.
-function createLookSlider(track, thumb) {
-  const s = { value: 0, active: false, onInput: null };
+// زر يُمسَك (سهما الدوران في الجوال): onChange(true) عند لمس الإصبع، و(false) عند رفعه.
+// بلمسة الإصبع نفسها كـ createPressButton، فيعمل بإصبع ثانٍ والإبهام على العصا
+function createHoldButton(el, onChange) {
   let id = null;
-  const show = (v) => {
-    thumb.style.left = `${(1 - v) * 50}%`;
-    track.setAttribute("aria-valuenow", String(Math.round(-v * 100)));
-    track.classList.toggle("off-center", Math.abs(v) > 0.02);
+  const stop = (e) => {
+    if (id === null || (e && e.pointerId !== id)) return;
+    id = null;
+    el.classList.remove("pressed");
+    onChange(false);
   };
-  const fromEvent = (e) => {
-    const r = track.getBoundingClientRect();
-    const f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-    let v = 1 - 2 * f;
-    if (Math.abs(v) < 0.06) v = 0; // قرب الوسط: إلى الأمام تمامًا
-    s.value = v;
-    show(v);
-    if (s.onInput) s.onInput(v);
-  };
-  track.addEventListener("pointerdown", (e) => {
+  el.addEventListener("pointerdown", (e) => {
     if (id !== null) return;
     e.preventDefault();
     id = e.pointerId;
-    s.active = true;
-    track.setPointerCapture?.(e.pointerId);
-    fromEvent(e);
+    el.setPointerCapture?.(e.pointerId);
+    el.classList.add("pressed");
+    if (navigator.vibrate) navigator.vibrate(8);
+    onChange(true);
   });
-  track.addEventListener("pointermove", (e) => e.pointerId === id && fromEvent(e));
-  const end = (e) => {
-    if (e.pointerId !== id) return;
-    id = null;
-    s.active = false;
-  };
-  track.addEventListener("pointerup", end);
-  track.addEventListener("pointercancel", end);
-  track.addEventListener("lostpointercapture", end);
-  // لوحة المفاتيح: السهمان عشر الشريط
-  track.addEventListener("keydown", (e) => {
-    const d = e.code === "ArrowLeft" ? 0.1 : e.code === "ArrowRight" ? -0.1 : 0;
-    if (!d) return;
-    e.preventDefault();
-    s.value = Math.max(-1, Math.min(1, s.value + d));
-    show(s.value);
-    if (s.onInput) s.onInput(s.value);
-  });
-  // من غير الشريط (السحب على الشاشة، أو ✓): المقبض يتبع
-  s.set = (v) => {
-    v = Math.max(-1, Math.min(1, v));
-    if (v === s.value || (v !== 0 && Math.abs(v - s.value) < 1e-4)) return; // الصفر تمامًا: المقبض في الوسط تمامًا
-    s.value = v;
-    show(v);
-  };
-  show(0);
-  return s;
+  el.addEventListener("pointerup", stop);
+  el.addEventListener("pointercancel", stop);
+  el.addEventListener("lostpointercapture", stop);
+  // لوحة المفاتيح: ضغطة قصيرة
+  el.addEventListener("click", (e) => e.detail === 0 && (onChange(true), onChange(false)));
 }

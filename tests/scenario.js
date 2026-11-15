@@ -167,7 +167,7 @@ function runUmrah(mode) {
         await page.tap('#menu label:has(input[data-opt="gyro"])');
         await page.tap('#menuClose');
         assert.equal(await page.evaluate(() => window.__umrah.player.look), 'mouse');
-        // بإصبع ثانٍ والإبهام على العصا: الهرولة وشريط زاوية النظر يعملان، والعصا تبقى. (كان click لا يصل مع لمستين)
+        // بإصبع ثانٍ والإبهام على العصا: السهم والهرولة يعملان، والعصا تبقى. (كان click لا يصل مع لمستين)
         const center = async (sel) => {
           const b = await page.locator(sel).boundingBox();
           return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
@@ -178,15 +178,15 @@ function runUmrah(mode) {
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...thumb, y: 620 }] });
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [thumb] });
           await D.frames(2);
-          const before = await page.evaluate(() => window.__umrah.player.turnedAt);
+          const before = await page.evaluate(() => window.__umrah.player.headingYaw());
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [thumb, { ...f, id: 1 }] });
           await D.frames(2);
-          const st = await page.evaluate(() => ({ turned: window.__umrah.player.turnedAt, head: window.__umrah.player.head, jog: window.__umrah.player.jogToggle, joy: window.__umrah.input.joystick.y }));
+          const st = await page.evaluate(() => ({ turned: window.__umrah.player.headingYaw(), jog: window.__umrah.player.jogToggle, joy: window.__umrah.input.joystick.y }));
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); // يرفع الإصبعين
-          return { ...st, turned: st.turned !== before };
+          return { ...st, turned: Math.abs(st.turned - before) > 0.02 }; // السهم يدير النظر (والتفصيل في controls.test.js)
         };
-        const t = await withThumb('#lookTrack');
-        assert.ok(Math.abs(t.head) < 0.02, 'وسط الشريط ليس النظر إلى الأمام');
+        const t = await withThumb('#turnRBtn');
+        assert.ok(t.turned, 'السهم لا يدير والإبهام على العصا');
         assert.ok(t.joy > 0.5, 'الإصبع الثاني ألغى لمسة العصا');
         const j = await withThumb('#jogBtn');
         assert.equal(j.jog, true, 'زر الهرولة لا يعمل والإبهام على العصا');
