@@ -14,15 +14,19 @@ var DWELL_SECONDS = 1; // مدة النظر إلى زر لاختياره في ع
 var CARDBOARD_IPD = 0.064;
 var CARDBOARD_FOV = 75; // زاوية الرؤية الرأسية لكل عين
 // الجوال: الرأس مستقل عن الجسم (player.head). السحب يدير الرأس، والعصا تمشي بالجسم وتديره
-// زاوية النظر (الشريط أو السحب) لا تعود وحدها: تبقى حتى يضغط اللاعب ✓ (m.centerLook)
+// زاوية النظر (بالسحب) لا تعود وحدها: تبقى حتى يضغط اللاعب ✓ (m.centerLook)
 var LOOK_CENTER_RATE = 8; // سرعة عودة النظرة إلى الأمام بعد ✓ (لكل ثانية)
 var FACE_DELAY = 1.2; // ثوانٍ بعد آخر سحب قبل أن يلتفت الجسم إلى الحجر الأسود عند الوصول
 var BODY_TURN_RATE = 6; // سرعة التفات الجسم مع مسار المنسك (لكل ثانية)
 var STEER_RATE = 2; // راديان في الثانية والعصا إلى أقصى اليمين أو اليسار
+// سهما الدوران في الجوال: دوران ناعم ما دام الإصبع على الزر، يبدأ بهدوء ويقف بهدوء
+var TURN_BTN_RATE = 1.5; // راديان في الثانية بعد أن يكتمل التسارع
+var TURN_BTN_MIN = 0.15; // ثوانٍ: أقصر لمسة تدير هذه المدة ثم تقف بهدوء (نحو 13° في المجموع)
+var TURN_BTN_EASE = 7; // سرعة بلوغ السرعة المطلوبة والوقوف (لكل ثانية)
 var STEER_DEAD = 0.25; // ميل جانبي أصغر من هذا لا يدير: المشي المستقيم لا يحتاج إبهامًا دقيقًا
 
 function createModes({ renderer, scene, camera, player, hud, panels, game, input, vignette, reticle, world }) {
-  const { keyboard, pointer, joystick, sensor, gamepad, lookSlider } = input;
+  const { keyboard, pointer, joystick, sensor, gamepad } = input;
   const m = {
     mode: "desktop",
     comfort: false, // الحركة المريحة: تعتيم الأطراف، والدوران على دفعات بالأسهم
@@ -39,7 +43,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
   };
   const guide = createRouteGuide({ game, hud, laneAt: world.crowds.laneAt });
   // حالة المساعدة في الجوال. clock بزمن الإطارات لا بالساعة، فيعمل في الاختبار مع step()
-  const assist = { clock: 0, dragT: -1e9, turnedAt: player.turnedAt, pushing: false, centering: false, held: false, key: "", enabled: false, stuck: 0, faceTo: null };
+  const assist = { clock: 0, dragT: -1e9, turnedAt: player.turnedAt, pushing: false, centering: false, btnDir: 0, minDir: 0, minT: 0, turnVel: 0, lookOff: false, held: false, key: "", enabled: false, stuck: 0, faceTo: null };
   const snapPad = createSnapLatch();
   const snapXR = createSnapLatch();
   let xrAPrev = false;
@@ -107,13 +111,11 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
   };
   // ✓ بجانب شريط زاوية النظر: النظرة تعود إلى الأمام
   m.centerLook = () => (assist.centering = true);
-  // الشريط يضبط التفات الرأس لحظة اللمس (لمسة قصيرة قد تبدأ وتنتهي بين إطارين). والمقبض يتبع السحب على الشاشة كل إطار
-  lookSlider.onInput = (v) => {
-    if (m.mode !== "mobile" || player.look !== "mouse" || !player.enabled) return;
-    player.head = v * HEAD_LIMIT;
-    assist.centering = false;
-    assist.dragT = assist.clock;
-    assist.faceTo = null;
+  // سهما الدوران: dir = 1 يسارًا و-1 يمينًا. on: الإصبع على الزر
+  m.turnButton = (dir, on) => {
+    const a = assist;
+    if (on) (a.btnDir = dir), (a.minDir = dir), (a.minT = TURN_BTN_MIN);
+    else if (a.btnDir === dir) a.btnDir = 0;
   };
   m.setGuide = (on) => {
     m.guide = on;
@@ -227,7 +229,6 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
       }
       if (mode === "cardboard" && m.walking) fwd = Math.max(fwd, 1);
       if (mode === "mobile") {
-        if (m.autoWalk && joystick.y < -0.3) m.setAutoWalk(false); // العصا إلى الخلف توقفه
         const a = mobileAssist(dt, fwd, side, dragged);
         return player.update(dt, { forward: a.fwd, strafe: a.strafe, dir: a.dir });
       }
@@ -243,8 +244,8 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     const a = assist;
     a.clock += dt;
     const headLook = player.look === "mouse"; // مع المستشعر الجوال في يد اللاعب يدير النظر، والمشي باتجاهه
-    // إصبع النظر على الشاشة أو على الشريط: يلتفت اللاعب بنفسه
-    const looking = dragged || pointer.dragging() || lookSlider.active;
+    // إصبع النظر على الشاشة: يلتفت اللاعب بنفسه
+    const looking = dragged || pointer.dragging();
     if (looking || player.turnedAt !== a.turnedAt) (a.dragT = a.clock), (a.turnedAt = player.turnedAt), (a.faceTo = null);
     if (looking) a.centering = false;
     // الوصول إلى ما يحتاج منسكًا (أضاء الزر الذهبي خارج الطواف، أو تغيّر المنسك أو الهدف):
@@ -256,9 +257,10 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     a.enabled = on;
     if (arrived) {
       const walking = a.pushing || m.autoWalk;
+      const guided = m.guide || m.autoWalk;
       m.setAutoWalk(false);
       a.held = a.pushing;
-      a.faceTo = walking && m.guide ? guide.arrivalFace(game.stage) : null;
+      a.faceTo = walking && guided ? guide.arrivalFace(game.stage) : null;
     }
     if (m.autoWalk) fwd = Math.max(fwd, 1);
     const steer = Math.abs(side) < STEER_DEAD ? 0 : (Math.sign(side) * (Math.abs(side) - STEER_DEAD)) / (1 - STEER_DEAD);
@@ -269,12 +271,25 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     if (!pushing) a.held = false;
     if (a.held) fwd = 0;
     let dir = null;
-    if (m.guide && pushing && !a.held && player.enabled) {
+    // «مشي مستمر» على مسار المنسك دائمًا، ولو أُطفئ المشي الموجّه: يأخذ منحنى الطواف وحده
+    if ((m.guide || m.autoWalk) && pushing && !a.held && player.enabled) {
       const p = player.getPos();
       const h = player.headingYaw();
-      dir = guide.direction(p.x, p.z, -Math.sin(h), -Math.cos(h), fresh, steer);
+      dir = guide.direction(p.x, p.z, -Math.sin(h), -Math.cos(h), fresh, steer, m.autoWalk);
     }
     m.guideDir = dir;
+    // سهما الدوران: سرعة تتسارع وتقف بهدوء. بلا مسار تدير الجسم، وعلى مسار المنسك (الجسم معه) تدير الرأس
+    a.minT -= dt;
+    const turnTo = (a.btnDir || (a.minT > 0 ? a.minDir : 0)) * TURN_BTN_RATE;
+    a.turnVel += (turnTo - a.turnVel) * Math.min(1, dt * TURN_BTN_EASE);
+    if (Math.abs(a.turnVel) > 0.01) {
+      if (!player.enabled) a.turnVel = 0;
+      else if (dir && headLook) player.head = Math.max(-HEAD_LIMIT, Math.min(HEAD_LIMIT, player.head + a.turnVel * dt));
+      else player.yaw += a.turnVel * dt;
+      a.dragT = a.clock;
+      a.faceTo = null;
+      a.centering = false;
+    } else a.turnVel = turnTo ? a.turnVel : 0;
     if (!headLook || !player.enabled) return { fwd, dir, strafe: side };
 
     if (dir) {
@@ -296,7 +311,9 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
       player.head *= Math.max(0, 1 - dt * LOOK_CENTER_RATE);
       if (Math.abs(player.head) < 0.005) (player.head = 0), (a.centering = false);
     }
-    lookSlider.set(player.head / HEAD_LIMIT);
+    // ✓ يمتلئ حين لا يكون النظر إلى الأمام
+    const off = Math.abs(player.head) > 0.02;
+    if (off !== a.lookOff) (a.lookOff = off), document.body.classList.toggle("look-off", off);
     // المشي المستمر يقف إن علق اللاعب (جدار، أو اتجاه بلا مسار)
     if (m.autoWalk) {
       a.stuck = player.speed < 0.3 ? a.stuck + dt : 0;

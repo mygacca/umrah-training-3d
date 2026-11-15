@@ -77,14 +77,15 @@ function createRouteGuide({ game, hud, laneAt }) {
 
   // (x, z) موضع اللاعب، و(hx, hz) اتجاه نظره الأفقي. fresh: بداية دفعة جديدة للعصا. side: المشي الجانبي.
   // يعيد [dx, dz] اتجاه المشي، أو null للمشي في اتجاه النظر
-  g.direction = (x, z, hx, hz, fresh, side) => {
+  // ccw: «مشي مستمر» يطوف والكعبة عن اليسار دائمًا، أيًّا كان اتجاه النظر
+  g.direction = (x, z, hx, hz, fresh, side, ccw = false) => {
     const stage = game.stage;
     if (stage === "tawaf") {
       const r = Math.hypot(x, z);
       const phi = Math.atan2(-z, x);
-      if (fresh || !g.sense) {
+      if (fresh || !g.sense || (ccw && g.sense !== 1)) {
         // المماس عكس عقارب الساعة (-sin φ, -cos φ): من ينظر عكسه بوضوح يمشي عكسه
-        g.sense = hx * -Math.sin(phi) + hz * -Math.cos(phi) < -0.5 ? -1 : 1;
+        g.sense = !ccw && hx * -Math.sin(phi) + hz * -Math.cos(phi) < -0.5 ? -1 : 1;
         g.rHold = r;
       }
       if (Math.abs(side) > 0.15) g.rHold = r; // المشي الجانبي يقرّب من الكعبة أو يبعد عنها

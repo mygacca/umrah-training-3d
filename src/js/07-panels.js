@@ -717,9 +717,9 @@ function createPanels({ scene, camera, model }) {
     {
       const p = flat.card;
       const w = landscapeSmall ? Math.min(380, W - 300) : narrow ? W - 152 : Math.min(440, W - 148);
-      // على الشاشة الضيقة القصيرة: البطاقة لا تنزل تحت شريط زاوية النظر (أعلاه 302 بكسل من أسفل الشاشة)
+      // على الشاشة الضيقة القصيرة: البطاقة لا تنزل تحت أزرار الجوال (عمودها 162 بكسل فوق الزر الذهبي)
       // وفي الأفقي القصير: فوق صف الأزرار (50 بكسل فوق الزر الذهبي)
-      const maxH = landscapeSmall ? Math.max(120, Math.min(0.52 * H, H - 56 - safeT - 152 - safe.b)) : narrow ? Math.max(140, Math.min(0.46 * H, H - 56 - safeT - 310 - safe.b)) : 0.46 * H;
+      const maxH = landscapeSmall ? Math.max(120, Math.min(0.52 * H, H - 56 - safeT - 152 - safe.b)) : narrow ? Math.max(140, Math.min(0.46 * H, H - 56 - safeT - 278 - safe.b)) : 0.46 * H;
       const o = { narrow, maxH, collapsed: ui.collapsed, hover: ui.hover };
       const m = paintCard(p.ctx, w, s, o, false);
       p.begin(w, m.h, dpr);
@@ -734,8 +734,7 @@ function createPanels({ scene, camera, model }) {
       if (!s.action.label) p.mesh.visible = false;
       else {
         p.ctx.font = `800 15px ${ri}`;
-        // في الأفقي القصير: حتى 40% من العرض، فيبقى مكان لشريط زاوية النظر بين العصا والزر
-        const w = Math.round(Math.min((landscapeSmall ? 0.4 : 0.62) * W, Math.max(150, p.ctx.measureText(s.action.label).width + 48)));
+        const w = Math.round(Math.min(0.62 * W, Math.max(150, p.ctx.measureText(s.action.label).width + 48)));
         const h = 64;
         p.begin(w, h, dpr);
         paintAction(p.ctx, w, h, s, { hint: ui.hint, hover: ui.hover === "action" });

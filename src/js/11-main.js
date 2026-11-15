@@ -35,7 +35,6 @@ var input = {
   keyboard: createKeyboard(),
   pointer: createPointer($id("c")),
   joystick: createJoystick($id("joy"), $id("knob")),
-  lookSlider: createLookSlider($id("lookTrack"), $id("lookThumb")),
   sensor: createOrientationSensor(),
   gamepad: createGamepadReader(),
 };
@@ -190,7 +189,7 @@ function saveFlag(key, on) {
   } catch {}
 }
 modes.gyro = savedFlag("umrah.gyro", false);
-// مع المستشعر الجوال نفسه يدير النظر: لا شريط لزاوية النظر
+// مع المستشعر الجوال نفسه يدير النظر: لا ✓ لإعادة النظرة
 document.body.classList.toggle("gyro-look", modes.gyro);
 modes.setGuide(savedFlag("umrah.guide", true));
 syncOpt("gyro", modes.gyro);
@@ -310,8 +309,10 @@ modes.onAutoWalk = (on) => {
   $id("autoWalkBtn").classList.toggle("on", on);
   $id("autoWalkBtn").setAttribute("aria-pressed", on ? "true" : "false");
 };
-// ✓ بجانب شريط زاوية النظر: النظرة إلى الأمام
+// ✓ بين السهمين: النظرة إلى الأمام. والسهمان يديران بنعومة ما دام الإصبع عليهما (modes.turnButton)
 createPressButton($id("lookReset"), () => modes.centerLook());
+createHoldButton($id("turnLBtn"), (on) => modes.turnButton(1, on));
+createHoldButton($id("turnRBtn"), (on) => modes.turnButton(-1, on));
 $id("menuBtn").addEventListener("click", () => {
   $id("menu").hidden = false;
   player.enabled = false;
