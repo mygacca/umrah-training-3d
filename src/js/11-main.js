@@ -214,11 +214,30 @@ if ("speechSynthesis" in window) speechSynthesis.addEventListener?.("voiceschang
 
 // ——— البدء ———
 var startHints = {
-  mobile: "ضع إبهامك الأيسر أسفل الشاشة لتمشي، واسحب بالأيمن لتلتفت، والمس الزر الذهبي للمنسك.",
+  mobile: "العصا تحت إبهامك الأيسر تمشي وتدور، والسحب يلتفت برأسك، والزر الذهبي للمنسك.",
   cardboard: "انظر إلى زر ثانية واحدة لتختاره، والمس الشاشة لتمشي أو تقف.",
   desktop: "امشِ بالأسهم أو بمفاتيح WASD، والتفت بسحب الفأرة، والمسافة للمنسك.",
   xr: "",
 };
+// شرح مناطق اللمس في الجوال: يظهر أول مرة، ويختفي بعد ثانيتين من أول استعمال للعصا أو للسحب، أو بعد 14 ثانية
+var coach = { el: $id("coach"), timer: 0, used: false };
+function hideCoach() {
+  clearTimeout(coach.timer);
+  coach.el.hidden = true;
+}
+function showCoach() {
+  coach.used = false;
+  coach.el.hidden = false;
+  clearTimeout(coach.timer);
+  coach.timer = setTimeout(hideCoach, 14000);
+  saveFlag("umrah.coach", true);
+}
+$id("coachBtn").addEventListener("click", () => {
+  dropFocus();
+  $id("menu").hidden = true;
+  player.enabled = true;
+  showCoach();
+});
 function beginTraining() {
   const fromIntro = !$id("intro").hidden;
   $id("intro").hidden = true;
@@ -231,7 +250,9 @@ function beginTraining() {
   hajj.reset(gender);
   game.start(gender);
   const hint = startHints[modes.mode];
-  if (fromIntro && hint) setTimeout(() => hud.toast(hint, "info", 5), 900);
+  // في الجوال أول مرة: شرح مناطق اللمس بدل التنبيه المكتوب
+  if (fromIntro && modes.mode === "mobile" && !savedFlag("umrah.coach", false)) showCoach();
+  else if (fromIntro && hint) setTimeout(() => hud.toast(hint, "info", 5), 900);
 }
 function restart() {
   dropFocus();
@@ -379,13 +400,18 @@ function step(dt) {
     player.yaw = Math.atan2(x, z) + (wide ? -0.24 : 0);
     player.pitch = wide ? 0.06 : -0.3;
   }
+  if (!coach.el.hidden && !coach.used && (input.joystick.id !== null || input.pointer.dragging())) {
+    coach.used = true;
+    clearTimeout(coach.timer);
+    coach.timer = setTimeout(hideCoach, 2000);
+  }
   modes.frame(dt);
   game.update(dt);
   const pos = player.getPos();
   world.update(dt, pos);
   mashair.update(dt, hud.time);
   hud.update(dt);
-  panels.update(dt, { time: hud.time, pos, heading: player.headingPhi() });
+  panels.update(dt, { time: hud.time, pos, heading: player.bodyPhi(), look: player.look === "mouse" ? player.head : 0 });
   modes.afterFrame(dt);
 }
 var clock = new Ir();

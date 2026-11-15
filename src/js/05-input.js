@@ -54,6 +54,7 @@ function createPointer(canvas) {
   // (مثل نافذة الملخص التي يفتحها لمس الزر الذهبي)
   // وبعد السحب لا يُلغى touchend (cancelable=false)، ومحاولة إلغائه خطأ في وحدة التحكم؛ ولا نقر بعد السحب أصلًا
   canvas.addEventListener("touchend", (e) => e.cancelable && e.preventDefault(), { passive: false });
+  p.dragging = () => active.size > 0; // إصبع على اللوحة الآن (النظرة باقية ما دام)
   p.takeDrag = () => {
     const d = [p.dragYaw, p.dragPitch];
     p.dragYaw = p.dragPitch = 0;
