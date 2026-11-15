@@ -124,6 +124,10 @@ function runUmrah(mode) {
         assert.ok(cos > 0.95, `المشي ليس إلى الهدف (${cos.toFixed(2)})`);
         await D.frames(1);
         assert.deepEqual(await page.locator('#joy').boundingBox(), home, 'العصا لم تعد إلى مكانها');
+        // زاوية النظر لا تعود وحدها: باقية بعد المشي، و✓ بجانب الشريط يعيدها إلى الأمام
+        assert.ok(Math.abs((await page.evaluate(() => window.__umrah.player.head)) - turned) < 0.02, 'زاوية النظر تغيّرت وحدها');
+        await page.tap('#lookReset');
+        await page.waitForFunction(() => window.__umrah.player.head === 0, null, { timeout: 15000 });
         // «مشي مستمر»: يمشي وحده ويلتفت مع المسار، ويقف عند خط الحجر الأسود لأن المنسك يحتاج الزر، ثم ينظر إلى الحجر
         await page.tap('#autoWalkBtn');
         assert.equal(await page.evaluate(() => window.__umrah.modes.autoWalk), true);
@@ -163,12 +167,7 @@ function runUmrah(mode) {
         await page.tap('#menu label:has(input[data-opt="gyro"])');
         await page.tap('#menuClose');
         assert.equal(await page.evaluate(() => window.__umrah.player.look), 'mouse');
-        // زر الدوران على دفعات
-        const h2 = await heading();
-        await page.tap('#turnLBtn');
-        await D.frames(2);
-        assert.ok(Math.abs(angleDiff(await heading(), h2) - SNAP) < 0.02, 'زر الدوران ليس 30°');
-        // بإصبع ثانٍ والإبهام على العصا: الدوران والهرولة يعملان، والعصا تبقى. (كان click لا يصل مع لمستين)
+        // بإصبع ثانٍ والإبهام على العصا: الهرولة وشريط زاوية النظر يعملان، والعصا تبقى. (كان click لا يصل مع لمستين)
         const center = async (sel) => {
           const b = await page.locator(sel).boundingBox();
           return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
@@ -182,28 +181,18 @@ function runUmrah(mode) {
           const before = await page.evaluate(() => window.__umrah.player.turnedAt);
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [thumb, { ...f, id: 1 }] });
           await D.frames(2);
-          const st = await page.evaluate(() => ({ turned: window.__umrah.player.turnedAt, jog: window.__umrah.player.jogToggle, joy: window.__umrah.input.joystick.y }));
+          const st = await page.evaluate(() => ({ turned: window.__umrah.player.turnedAt, head: window.__umrah.player.head, jog: window.__umrah.player.jogToggle, joy: window.__umrah.input.joystick.y }));
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); // يرفع الإصبعين
           return { ...st, turned: st.turned !== before };
         };
-        const t = await withThumb('#turnRBtn');
-        assert.ok(t.turned, 'زر الدوران لا يعمل والإبهام على العصا');
+        const t = await withThumb('#lookTrack');
+        assert.ok(Math.abs(t.head) < 0.02, 'وسط الشريط ليس النظر إلى الأمام');
         assert.ok(t.joy > 0.5, 'الإصبع الثاني ألغى لمسة العصا');
         const j = await withThumb('#jogBtn');
         assert.equal(j.jog, true, 'زر الهرولة لا يعمل والإبهام على العصا');
         assert.ok(j.joy > 0.5, 'الإصبع الثاني ألغى لمسة العصا');
         await page.tap('#jogBtn');
         assert.equal(await page.evaluate(() => window.__umrah.player.jogToggle), false);
-        // الإبقاء على زر الدوران يكرّر الدفعة
-        const yaw = () => page.evaluate(() => window.__umrah.player.yaw); // يتراكم بلا التفاف حول 360°
-        const h3 = await yaw();
-        const r = await center('#turnRBtn');
-        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [r] });
-        await page.waitForTimeout(1300);
-        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-        await D.frames(2);
-        const held = h3 - (await yaw());
-        assert.ok(held > 2 * SNAP - 0.05, `الإبقاء على زر الدوران دار ${((held * 180) / Math.PI).toFixed(0)}° فقط`);
       }
       if (mode === 'cardboard') {
         // الصورتان: الكاميرتان جنبًا إلى جنب

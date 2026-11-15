@@ -1,4 +1,4 @@
-// التحكم في الجوال: العصا، ونظرة الرأس، والأزرار. بلمس حقيقي عبر CDP، والزمن بـ __umrah.step ليكون ثابتًا.
+// التحكم في الجوال: العصا، وشريط زاوية النظر، والأزرار. بلمس حقيقي عبر CDP، والزمن بـ __umrah.step ليكون ثابتًا.
 // اللمسة تبقى على الشاشة بين الخطوات: العصا ممسوكة بالإبهام، والإصبع الثاني يسحب للنظر.
 // في CDP: touchStart وtouchMove يذكران الأصابع كلها، وtouchEnd بإصبع يرفعه وحده، وبلا أصابع يرفعها كلها.
 const { test, describe, before, after, afterEach } = require('node:test');
@@ -116,64 +116,100 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     assert.ok(Math.hypot(c.x - b.x, c.z - b.z) > 1, 'لم يمشِ وهو يدور');
   });
 
-  test('واقفًا: السحب يدير الرأس لا الجسم، ثم «الأمام» هو ما يراه', async () => {
+  // شريط زاوية النظر: f موضع على الشريط من يساره (0) إلى يمينه (1)
+  const trackPoint = async (f, id = 1) => {
+    const b = await page.locator('#lookTrack').boundingBox();
+    return { x: b.x + b.width * f, y: b.y + b.height / 2, id };
+  };
+  const slider = () => page.evaluate(() => ({ now: +document.getElementById('lookTrack').getAttribute('aria-valuenow'), value: window.__umrah.input.lookSlider.value }));
+  const centerLook = async () => {
+    await page.tap('#lookReset');
+    await page.evaluate(() => {
+      for (let i = 0; i < 40; i++) window.__umrah.step(1 / 30);
+    });
+  };
+
+  test('شريط زاوية النظر: يدير الرأس لا الجسم، ويبقى حيث تُرك، و✓ يعيده إلى الأمام', async () => {
+    await pose(-30, 30, 1, 0);
+    const a = await state();
+    // لمسة عند ربع الشريط من اليسار: نصف الحد إلى اليسار
+    const p = await trackPoint(0.25);
+    await touch('touchStart', p);
+    await D.frames(1);
+    const b = await state();
+    assert.ok(Math.abs(b.head - HEAD_LIMIT / 2) < 0.02, `الرأس ${b.head.toFixed(2)} لا نصف الحد`);
+    assert.ok(Math.abs(b.yaw - a.yaw) < 1e-6, 'الشريط أدار الجسم');
+    assert.ok(Math.abs(wrap(b.view - a.view) - HEAD_LIMIT / 2) < 0.02, 'النظر لم يلتفت');
+    // سحب المقبض إلى أقصى اليمين: الحد إلى اليمين
+    await touch('touchMove', await trackPoint(1.2));
+    await D.frames(1);
+    assert.ok(Math.abs((await state()).head + HEAD_LIMIT) < 0.01, 'أقصى اليمين ليس حد الرأس');
+    assert.equal((await slider()).now, 100);
+    await release();
+    // يبقى حيث تُرك: عشر ثوانٍ واقفًا ثم ماشيًا، والمشي باتجاه الجسم لا النظر
+    await steps(150);
+    await stick(0, 1);
+    await steps(150);
+    const c = await state();
+    await release();
+    assert.ok(Math.abs(c.head + HEAD_LIMIT) < 0.01, `زاوية النظر عادت وحدها (${c.head.toFixed(2)})`);
+    assert.ok(Math.abs(c.yaw - a.yaw) < 1e-6, 'الجسم دار');
+    assert.ok(cosBetween([c.x - a.x, c.z - a.z], dirOf(a.yaw)) > 0.9999, 'المشي ليس باتجاه الجسم');
+    // ✓ يعيد النظرة إلى الأمام، والمقبض إلى الوسط
+    await centerLook();
+    const d = await state();
+    assert.equal(d.head, 0, '✓ لم يعد النظرة إلى الأمام');
+    assert.ok(Math.abs(d.yaw - a.yaw) < 1e-6, '✓ أدار الجسم');
+    assert.deepEqual(await slider(), { now: 0, value: 0 });
+  });
+
+  test('ماشيًا بإصبعين: الشريط والإبهام على العصا، والطريق لا يتغير', async () => {
+    await pose(-36, 30, 1, 0);
+    await stick(0, 1);
+    await steps(20);
+    const a = await state();
+    const p = await trackPoint(0.1);
+    await touch('touchStart', thumbAt(0, 1), p);
+    await D.frames(1);
+    await steps(60);
+    const b = await state();
+    assert.ok(b.joy[1] > 0.9, 'إصبع الشريط ألغى العصا');
+    assert.ok(Math.abs(b.head - 0.8 * HEAD_LIMIT) < 0.02, `الرأس ${b.head.toFixed(2)}`);
+    assert.ok(Math.abs(b.yaw - a.yaw) < 1e-6, 'الشريط أدار الجسم');
+    assert.ok(cosBetween([b.x - a.x, b.z - a.z], dirOf(a.yaw)) > 0.9999, 'الشريط غيّر الطريق');
+    // يرفع إصبع الشريط وحده: العصا باقية، والزاوية باقية
+    await touch('touchEnd', p);
+    await D.frames(1);
+    await steps(120);
+    const c = await state();
+    await release();
+    assert.ok(c.joy[1] > 0.9, 'رفع إصبع الشريط ألغى العصا');
+    assert.ok(Math.abs(c.head - b.head) < 1e-6, 'الزاوية تغيّرت بعد رفع الإصبع');
+    await centerLook();
+  });
+
+  test('السحب على الشاشة يلتفت أيضًا والمقبض يتبعه، ومن أكمل الالتفات دار جسمه معه', async () => {
     await pose(-30, 30, 1, 0);
     const a = await state();
     await look(0.6);
     await release();
     const b = await state();
-    assert.ok(Math.abs(b.head - a.head - 0.6) < 0.02, `الرأس التفت ${(b.head - a.head).toFixed(2)}`);
-    assert.ok(Math.abs(b.yaw - a.yaw) < 1e-6, 'السحب أدار الجسم');
-    assert.ok(Math.abs(wrap(b.view - a.view) - 0.6) < 0.02, 'النظر لم يلتفت');
-    // دفعة العصا: الجسم يأخذ اتجاه النظر بلا قفزة في ما يُرى، والمشي إلى حيث ينظر
-    await stick(0, 1);
+    assert.ok(Math.abs(b.head - 0.6) < 0.02 && Math.abs(b.yaw - a.yaw) < 1e-6, 'السحب لم يدر الرأس وحده');
+    assert.ok(Math.abs((await slider()).value - 0.6 / HEAD_LIMIT) < 0.02, 'مقبض الشريط لم يتبع السحب');
+    await look(2.4); // أكثر مما بقي للرأس
+    await release();
+    const c = await state();
+    assert.ok(Math.abs(c.head - HEAD_LIMIT) < 0.01, `الرأس ${c.head.toFixed(2)} لا عند حدّه`);
+    assert.ok(Math.abs(c.yaw - a.yaw - (3 - HEAD_LIMIT)) < 0.04, 'ما زاد عن حد الرأس لم يدر الجسم');
+    // العصا تدير الجسم والنظرة معه، وزاوية النظر كما هي
+    await stick(-1, 0);
     await steps(30);
-    const c = await state();
+    const d = await state();
     await release();
-    assert.ok(Math.abs(c.head) < 0.02 && Math.abs(wrap(c.yaw - b.view)) < 0.02, 'الجسم لم يأخذ اتجاه النظر');
-    assert.ok(cosBetween([c.x - b.x, c.z - b.z], dirOf(b.view)) > 0.999, 'لم يمشِ إلى حيث ينظر');
-  });
-
-  test('ماشيًا: الالتفات بالرأس لا يغيّر الطريق، والنظرة تبقى مع الإصبع ثم تعود إلى الأمام', async () => {
-    await pose(-36, 30, 1, 0);
-    await stick(0, 1);
-    await steps(20);
-    const a = await state();
-    // إصبع ثانٍ يسحب: 40° إلى اليسار، والإبهام على العصا
-    const finger = await look(0.7, { thumb: thumbAt(0, 1) });
-    await steps(90); // ثلاث ثوانٍ والإصبع على الشاشة
-    const b = await state();
-    assert.ok(b.joy[1] > 0.9, 'الإصبع الثاني ألغى العصا');
-    assert.ok(Math.abs(b.head - 0.7) < 0.03, `النظرة لم تبقَ مع الإصبع (${b.head.toFixed(2)})`);
-    assert.ok(Math.abs(b.yaw - a.yaw) < 1e-6, 'الالتفات بالرأس أدار الجسم');
-    assert.ok(cosBetween([b.x - a.x, b.z - a.z], dirOf(a.yaw)) > 0.9999, 'الالتفات بالرأس غيّر الطريق');
-    assert.ok(Math.hypot(b.x - a.x, b.z - a.z) > 6, 'توقف المشي أثناء الالتفات');
-    // يرفع إصبع النظر وحده: تبقى النظرة نحو ثانية ثم تعود
-    await touch('touchEnd', finger);
-    await D.frames(1);
-    assert.ok((await state()).joy[1] > 0.9, 'رفع إصبع النظر ألغى العصا');
-    await steps(24);
-    assert.ok((await state()).head > 0.6, 'النظرة عادت فور رفع الإصبع');
-    await steps(90);
-    const c = await state();
-    await release();
-    assert.ok(Math.abs(c.head) < 0.05, `النظرة لم تعد إلى الأمام (${c.head.toFixed(2)})`);
-    assert.ok(Math.abs(c.yaw - a.yaw) < 1e-6, 'الجسم دار مع عودة النظرة');
-  });
-
-  test('من أكمل الالتفات دار جسمه معه، وزر الدوران يدير الجسم والنظرة باقية', async () => {
-    await pose(-30, 30, 1, 0);
-    const a = await state();
-    await look(2.4); // أكثر من حد الرأس
-    await release();
-    const b = await state();
-    assert.ok(Math.abs(b.head - HEAD_LIMIT) < 0.01, `الرأس ${b.head.toFixed(2)} لا عند حدّه`);
-    assert.ok(Math.abs(b.yaw - a.yaw - (2.4 - HEAD_LIMIT + a.head)) < 0.03, 'ما زاد عن حد الرأس لم يدر الجسم');
-    await page.tap('#turnRBtn');
-    await D.frames(2);
-    const c = await state();
-    assert.ok(Math.abs(b.yaw - c.yaw - Math.PI / 6) < 1e-6, 'زر الدوران ليس 30°');
-    assert.ok(Math.abs(c.head - b.head) < 1e-6, 'زر الدوران غيّر التفات الرأس');
+    assert.ok(d.yaw - c.yaw > 1.8, 'العصا لم تدر الجسم يسارًا');
+    assert.ok(Math.abs(d.head - c.head) < 1e-6, 'دوران الجسم غيّر زاوية النظر');
+    await centerLook();
+    assert.equal(await page.locator('#turnLBtn').count(), 0, 'زرّا الدوران ما زالا في الجوال');
   });
 
   test('الطواف: ينظر إلى الكعبة وهو يطوف، والأشواط تُحتسب، والجانب يقرّب من الكعبة', async () => {
@@ -210,7 +246,12 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     await steps(60);
     const a = await state();
     const r0 = Math.hypot(a.x, a.z);
-    const finger = await look(Math.PI / 2 - a.head - 0.12, { thumb: thumbAt(0, 1) });
+    // بالشريط: 90° إلى اليسار، ثم يرفع إصبعه والزاوية باقية
+    const finger = await trackPoint(0.5 - (Math.PI / 2 - 0.12) / HEAD_LIMIT / 2);
+    await touch('touchStart', thumbAt(0, 1), finger);
+    await D.frames(1);
+    await touch('touchEnd', finger);
+    await D.frames(1);
     const t = await page.evaluate(() => {
       const { step, player, game } = window.__umrah;
       const cum0 = game.debug().T.cum;
@@ -234,8 +275,12 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     assert.ok(t.worst < 0.35, `الكعبة خرجت من وسط النظر (${t.worst.toFixed(2)} راديان)`);
     assert.ok(t.rMin > r0 - 0.5 && t.rMax < r0 + 0.5, 'البعد عن الكعبة تغيّر');
     assert.ok(t.head > 1.2, 'النظرة لم تبقَ نحو الكعبة');
-    // يرفع إصبع النظر، ثم العصا إلى الأمام واليسار: يقترب من الكعبة وما زال يطوف
-    await touch('touchEnd', finger);
+    // ✓ والإبهام على العصا، ثم العصا إلى الأمام واليسار: يقترب من الكعبة وما زال يطوف
+    const ok = await page.locator('#lookReset').boundingBox();
+    const okFinger = { x: ok.x + ok.width / 2, y: ok.y + ok.height / 2, id: 1 };
+    await touch('touchStart', thumbAt(0, 1), okFinger);
+    await touch('touchEnd', okFinger);
+    await steps(40);
     await touch('touchMove', thumbAt(-0.8, 0.6));
     await D.frames(1);
     const b = await state();
@@ -273,7 +318,7 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
         };
         const flat = window.__umrah.panels.flat;
         const css = (name) => ({ id: name, ...flat[name].css, visible: flat[name].mesh.visible });
-        return { buttons: ['turnLBtn', 'turnRBtn', 'autoWalkBtn', 'jogBtn', 'menuBtn'].map(box), joy: box('joy'), action: css('action'), card: css('card'), W: innerWidth, H: innerHeight };
+        return { buttons: ['lookTrack', 'lookReset', 'autoWalkBtn', 'jogBtn', 'menuBtn'].map(box), joy: box('joy'), action: css('action'), card: css('card'), W: innerWidth, H: innerHeight };
       });
       const hit = (a, b) => a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5;
       const at = `${w}×${h}`;
