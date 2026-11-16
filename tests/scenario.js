@@ -128,28 +128,30 @@ function runUmrah(mode) {
         assert.ok(Math.abs(angleDiff(await heading(), h0) - turned) < 0.03, 'اتجاه النظر تغيّر بالمشي');
         await page.tap('#lookReset');
         await page.waitForFunction(() => window.__umrah.player.head === 0, null, { timeout: 15000 });
-        // «مشي مستمر»: يمشي وحده إلى أفضل موضع والنظر مع المسار، ويقف عند خط الحجر الأسود لأن المنسك يحتاج الزر، ثم ينظر إلى الحجر
+        // «مشي مستمر»: يمشي وحده إلى أفضل موضع والنظر مع المسار، وينتظر عند خط الحجر الأسود لأن المنسك يحتاج الزر (ولا يُطفأ)، وينظر إلى الحجر
         await page.tap('#autoWalkBtn');
         assert.equal(await page.evaluate(() => window.__umrah.modes.autoWalk), true);
         const w = await page.evaluate(() => {
           const { modes, hud, game, player, step } = window.__umrah;
           let n = 0;
           let align = null;
-          while (modes.autoWalk && n++ < 900) {
+          while (!(modes.assist.autoWait && hud.model.action.enabled) && n++ < 900) {
             step(1 / 30);
             const g = modes.guideDir;
             if (g) align = Math.abs(Math.atan2(Math.sin(player.headingYaw() - Math.atan2(-g[0], -g[1])), Math.cos(player.headingYaw() - Math.atan2(-g[0], -g[1]))));
           }
           for (let i = 0; i < 90; i++) step(1 / 30);
           const p = player.getPos();
-          return { n, autoWalk: modes.autoWalk, stage: game.stage, action: hud.model.action, align, p, heading: player.headingYaw(), pressed: document.getElementById('autoWalkBtn').getAttribute('aria-pressed') };
+          return { n, autoWalk: modes.autoWalk, waitClass: document.body.classList.contains('auto-wait'), speed: player.speed, stage: game.stage, action: hud.model.action, align, p, heading: player.headingYaw(), pressed: document.getElementById('autoWalkBtn').getAttribute('aria-pressed') };
         });
-        assert.ok(!w.autoWalk && w.n < 900, 'المشي المستمر لم يقف');
-        assert.equal(w.pressed, 'false');
+        assert.ok(w.n < 900 && w.speed < 0.05, 'المشي المستمر لم يقف عند موضع المنسك');
+        assert.deepEqual([w.autoWalk, w.pressed, w.waitClass], [true, 'true', true], 'المشي المستمر أُطفئ بدل أن ينتظر الزر الذهبي');
         assert.equal(w.stage, 'toStart');
         assert.ok(w.action.enabled && w.action.label.includes('أشِر'), 'المشي المستمر لم يقف عند خط البداية');
         assert.ok(w.align < 0.15, `النظر لم يأخذ اتجاه المسار (${w.align.toFixed(2)})`);
-        assert.ok(Math.abs(Math.hypot(w.p.x, w.p.z) - 13) < 1.2, `وقف على ${Math.hypot(w.p.x, w.p.z).toFixed(1)} م من الكعبة لا على أفضل بعد`);
+        assert.ok(Math.abs(Math.hypot(w.p.x, w.p.z) - 13) < 0.9, `وقف على ${Math.hypot(w.p.x, w.p.z).toFixed(1)} م من الكعبة لا على أفضل بعد`);
+        await page.tap('#autoWalkBtn'); // يُطفأ بزرّه
+        assert.equal(await page.evaluate(() => window.__umrah.modes.autoWalk), false);
         const stone = toWorld(KAABA.lx / 2, KAABA.lz / 2); // ركن الحجر الأسود
         const toStone = Math.atan2(-(stone[0] - w.p.x), -(stone[1] - w.p.z));
         assert.ok(Math.abs(angleDiff(w.heading, toStone)) < 0.1, 'لم ينظر إلى الحجر الأسود بعد الوصول');
@@ -607,17 +609,16 @@ function runUmrah(mode) {
           let maxX = 0;
           let midHeading = null;
           let midX = null;
-          while (modes.autoWalk && n++ < 1800) {
+          while (!(modes.assist.autoWait && hud.model.action.enabled) && n++ < 1800) {
             step(1 / 30);
             const q = player.getPos();
             if (q.z < 10 && q.z > -80) maxX = Math.max(maxX, q.x);
             if (q.z < -30 && midHeading === null) (midHeading = player.headingYaw()), (midX = q.x);
           }
           out.sai = { n, autoWalk: modes.autoWalk, lap: game.debug().A.lap, dua: hud.model.action.enabled, maxX, midHeading, midX };
-          // الشوط الثاني: بعد الدعاء يعبر عند طرف الحاجز إلى شرقيه، ويعود إلى الصفا في وسط المسار والنظر إليها
+          // الشوط الثاني: بعد الدعاء يكمل وحده (لم يُطفأ)، فيعبر عند طرف الحاجز إلى شرقيه، ويعود إلى الصفا في وسط المسار والنظر إليها
           game.act();
           step(1 / 30);
-          modes.setAutoWalk(true);
           let minX = 1e9;
           let back = null;
           for (let i = 0; i < 900 && modes.autoWalk && back === null; i++) {
@@ -639,7 +640,7 @@ function runUmrah(mode) {
         assert.deepEqual([r.hijr.entered, r.hijr.wrong], [0, 0], 'المشي الموجّه دخل الحِجر أو عكس الاتجاه');
         assert.ok(r.hijr.nearest > 15, `مرّ على ${r.hijr.nearest.toFixed(1)} م من الكعبة عند الحِجر`);
         assert.ok(r.hijr.after < 12.5, 'لم يعد إلى قرب الكعبة بعد الحِجر');
-        assert.deepEqual([r.sai.autoWalk, r.sai.lap, r.sai.dua], [false, 1, true], 'السعي بالمشي المستمر');
+        assert.deepEqual([r.sai.autoWalk, r.sai.lap, r.sai.dua], [true, 1, true], 'السعي بالمشي المستمر: ينتظر الدعاء عند المروة ولا يُطفأ');
         assert.ok(r.sai.maxX < 74.5, 'الذاهب إلى المروة عبر إلى شرقي الحاجز');
         assert.ok(Math.abs(angleDiff(r.sai.midHeading, 0)) < 0.15, 'النظر ليس إلى المروة');
         assert.ok(Math.abs(r.sai.midX - 71) < 0.5, `الذاهب إلى المروة ليس في وسط مساره (x = ${r.sai.midX.toFixed(1)})`);

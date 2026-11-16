@@ -248,6 +248,8 @@ body.gyro-look #lookReset { display: none; }
   font: 600 14px var(--kufi);
 }
 #jogBtn.on, #autoWalkBtn.on { background: var(--ivory); color: var(--deep); border-color: var(--ivory); }
+/* «مشي مستمر» مشغّل وينتظر (الزر الذهبي، أو خطوة بلا مشي): حدّ منقّط، فيُعرف أنه لم يُلغَ */
+body.auto-wait #autoWalkBtn.on { background: rgba(246, 241, 228, 0.22); color: var(--ivory); border: 2px dashed var(--ivory); }
 
 /* علبة VR: خط بين الصورتين يساعد على وضع الجوال في وسط العلبة، وزر خروج */
 #cardboard, #cbExit { display: none; }
