@@ -583,14 +583,14 @@ function runUmrah(mode) {
           step(1 / 30);
           game.act();
           out.stage = game.stage;
-          // ينظر إلى الكعبة على بعد 20 م: يمشي والكعبة عن يساره، على البعد نفسه، واتجاه السير مع المسار والنظر ما زال إلى الكعبة
+          // على بعد 20 م: يمشي والكعبة عن يساره، على البعد نفسه، واتجاه السير مع المسار والنظر منه نحو الكعبة
           let p = polar();
           player.teleport(Math.cos(p.phi) * 20, -Math.sin(p.phi) * 20, -Math.cos(p.phi), Math.sin(p.phi));
           const cum0 = game.debug().T.cum;
           const rs = [];
           push(240, (q) => rs.push(q.r));
           p = polar();
-          out.tawaf = { turned: game.debug().T.cum - cum0, r: [Math.min(...rs.slice(10)), Math.max(...rs)], heading: Math.abs(wrap(player.yaw - p.phi)), view: Math.abs(wrap(player.headingYaw() - p.phi - Math.PI / 2)) };
+          out.tawaf = { turned: game.debug().T.cum - cum0, r: [Math.min(...rs.slice(10)), Math.max(...rs)], heading: Math.abs(wrap(player.yaw - p.phi)), view: Math.abs(wrap(player.headingYaw() - p.phi - (50 * Math.PI) / 180)) };
           // قريبًا من الكعبة (11 م) قبل الركن العراقي: يبتعد حول الحِجر ثم يعود
           player.teleport(Math.cos(1.3) * 11, -Math.sin(1.3) * 11, -Math.sin(1.3), -Math.cos(1.3));
           const hijrSide = [];
@@ -636,7 +636,7 @@ function runUmrah(mode) {
         assert.ok(r.tawaf.turned > 0.8, `الطواف الموجّه تقدّم ${r.tawaf.turned.toFixed(2)} راديان`);
         assert.ok(r.tawaf.r[0] > 19.4 && r.tawaf.r[1] < 20.6, `البعد عن الكعبة تغيّر: ${r.tawaf.r.map((x) => x.toFixed(2))}`);
         assert.ok(r.tawaf.heading < 0.15, 'اتجاه السير ليس مع مسار الطواف');
-        assert.ok(r.tawaf.view < 0.2, 'النظر لم يبقَ إلى الكعبة مع انحناء المسار');
+        assert.ok(r.tawaf.view < 0.15, 'النظر ليس النظر المناسب للطواف (50° من اتجاه السير نحو الكعبة)');
         assert.deepEqual([r.hijr.entered, r.hijr.wrong], [0, 0], 'المشي الموجّه دخل الحِجر أو عكس الاتجاه');
         assert.ok(r.hijr.nearest > 15, `مرّ على ${r.hijr.nearest.toFixed(1)} م من الكعبة عند الحِجر`);
         assert.ok(r.hijr.after < 12.5, 'لم يعد إلى قرب الكعبة بعد الحِجر');

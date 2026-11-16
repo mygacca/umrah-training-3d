@@ -526,7 +526,7 @@ body[data-mode="cardboard"] #menuBtn { display: none; }
     <h3>التحكّم</h3>
     <dl class="keys mobile-only">
       <div><dt>العصا</dt><dd>ضع إبهامك الأيسر في أي مكان أسفل يسار الشاشة: إلى الأمام والخلف تمشي، ويمينًا ويسارًا يدور اتجاه سيرك ونظرك على حاله. ومع «المشي الموجّه» يتبع المشي مسار المنسك، والجانبان يميلان بك عنه: يقرّبانك من الكعبة أو يبعدانك</dd></div>
-      <div><dt>النظر</dt><dd>اسحب على الشاشة لتغيّر اتجاه نظرك إلى أي جهة واتجاه سيرك على حاله، ولتنظر إلى أعلى وأسفل. يبقى النظر حيث تركته، و✓ بين السهمين يعيده إلى اتجاه السير. والمؤشر داخل ✓ والأسهم على الأرض تريك اتجاه سيرك</dd></div>
+      <div><dt>النظر</dt><dd>اسحب على الشاشة لتغيّر اتجاه نظرك إلى أي جهة واتجاه سيرك على حاله، ولتنظر إلى أعلى وأسفل. يبقى النظر حيث تركته، و✓ بين السهمين يعيده إلى اتجاه السير. وأول كل منسك يأخذ نظرك اتجاه طريقك، وعند المنسك ما يستقبله. والمؤشر داخل ✓ والأسهم على الأرض تريك اتجاه سيرك</dd></div>
       <div><dt>السهمان</dt><dd>يديران اتجاه سيرك بنعومة ما دام إصبعك على السهم، ونظرك على حاله. وعلى مسار المنسك يميلان بك عنه يمينًا أو يسارًا</dd></div>
       <div><dt>مشي مستمر</dt><dd>شغّله مرة واحدة: يمشي بك إلى موضع كل منسك باتجاه نظر مناسب (في الطواف: قريبًا من الكعبة والنظر نحوها)، وينتظر حتى تؤدي المنسك بالزر الذهبي ثم يكمل وحده. وحيث لا مشي يبقى منتظرًا (حدّه منقّط). عدّل موضعك بالعصا أو السهمين ونظرك باللمس، و✓ يعيد النظر المناسب. ويُطفأ بالزر نفسه</dd></div>
       <div><dt>المنسك</dt><dd>المس الزر الذهبي حين يضيء</dd></div>
@@ -11003,6 +11003,8 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     autoMoving: false, // «مشي مستمر» يمشي الآن (لا ينتظر)
     autoWait: false,
     autoJustOn: false,
+    legView: false, // منسك أو هدف جديد لم يمشِ فيه اللاعب بعد: يبدؤه من النظر المناسب
+    viewDirty: false, // ضبط اللاعب نظره وهو واقف (باللمس أو ✓)
   };
   const lookEl = document.getElementById("lookReset");
   const walkStrip = createWalkStrip();
@@ -11092,8 +11094,8 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     m.autoWalk = on;
     assist.stuck = 0;
     // يبدأ من أفضل موضع ومن النظر المناسب، ثم يعدّل اللاعب ما شاء
-    assist.viewOff = 0;
     assist.adjusted = false;
+    if (on) (assist.legView = true), (assist.routeYaw = null);
     assist.autoJustOn = on;
     if (!on) (assist.autoMoving = false), (assist.autoWait = false), document.body.classList.remove("auto-wait");
     m.onAutoWalk && m.onAutoWalk(on);
@@ -11199,6 +11201,8 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
         if (pad.edge(1) && mode === "cardboard") m.toggleWalk();
       }
       if (mode === "cardboard" && m.walking) fwd = Math.max(fwd, 1);
+      // الركعتان خلف المقام (الحجاب معروض): لا مشي حتى تنتهيا
+      if (game.stage === "prayer") fwd = side = 0;
       if (mode === "mobile") {
         const a = mobileAssist(dt, fwd, side, dragged);
         return player.update(dt, { forward: a.fwd, strafe: a.strafe, dir: a.dir });
@@ -11218,7 +11222,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     a.clock += dt;
     const headLook = player.look === "mouse"; // مع المستشعر الجوال في يد اللاعب يدير النظر، والمشي باتجاهه
     const looking = dragged || pointer.dragging(); // إصبع النظر على الشاشة
-    if (looking) (a.centering = false), (a.faceTo = null);
+    if (looking) (a.centering = false), (a.faceTo = null), (a.legView = false), (a.viewDirty = true);
     // ما يحتاج منسكًا: أضاء الزر الذهبي خارج الطواف (lit)، أو تغيّر المنسك أو الهدف (changed)
     const key = `${game.stage}|${hud.model.target}`;
     const on = hud.model.action.enabled;
@@ -11226,10 +11230,10 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     const lit = on && !a.enabled && game.stage !== "tawaf";
     a.key = key;
     a.enabled = on;
-    if (changed) a.adjusted = false; // منسك أو هدف جديد: «مشي مستمر» يبدؤه من أفضل موضع
+    if (changed) (a.adjusted = false), (a.legView = true); // منسك أو هدف جديد: من أفضل موضع ومن النظر المناسب
     if (game.stage === "done") m.setAutoWalk(false);
-    // من وصل بالعصا: اتجاه سيره إلى الحجر الأسود أو الكعبة، فلا يبدأ الطواف بعده معكوسًا. والنظر على حاله
-    if (lit && a.stick && m.guide && headLook) faceRite(false);
+    // من وصل بالعصا إلى موضع منسك: اتجاه سيره ونظره إلى ما يستقبله المنسك (الحجر الأسود، أو الكعبة)، كالمشي المستمر
+    if (lit && a.stick && m.guide && headLook) faceRite();
     // من يدفع العصا يقف عند ما يحتاج منسكًا حتى يرفع إبهامه، فلا يتجاوز الهدف ولا يرجع قبل أن يقرأ
     const stick = fwd > 0.08;
     if (changed || lit) a.held = a.stick;
@@ -11253,19 +11257,21 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     // تعديل اللاعب لاتجاه الحركة: جانبا العصا والسهمان. موجب إلى اليمين
     const adjust = headLook ? Math.max(-1, Math.min(1, steer - a.turnVel / TURN_BTN_RATE)) : steer;
     if (adjust || a.turnVel) a.turnedT = a.clock;
-    if (auto && Math.abs(adjust) > 0.15) a.adjusted = true;
+    if (Math.abs(adjust) > 0.15) a.adjusted = true;
     let dir = null;
     // «مشي مستمر» على مسار المنسك دائمًا، ولو أُطفئ المشي الموجّه، ومن أفضل موضع له ما لم يعدّل اللاعب
     if ((m.guide || auto) && pushing && player.enabled) {
       const p = player.getPos();
       const h = headLook ? player.yaw : player.headingYaw();
-      dir = guide.direction(p.x, p.z, -Math.sin(h), -Math.cos(h), fresh, adjust, auto, auto && !a.adjusted, dt);
+      // أفضل موضع: للمشي المستمر في كل منسك، وللعصا في السعي (الذاهب غربي الحاجز والعائد شرقيه، لا عكس الناس)
+      const best = (auto || game.stage === "sai") && !a.adjusted;
+      dir = guide.direction(p.x, p.z, -Math.sin(h), -Math.cos(h), fresh, adjust, auto, best, dt);
     }
     m.guideDir = dir;
     // «مشي مستمر» يمشي على مسار المنسك وحده: بلا مسار (الإحرام، أو وصل) لا يمشي، فلا يضلّ باللاعب
     const autoMoving = auto && !!dir;
     // وصل «مشي مستمر» إلى موضع المنسك: اتجاه السير والنظر إلى ما يستقبله المنسك
-    if (a.autoMoving && !autoMoving && needsRite && headLook) faceRite(true);
+    if (a.autoMoving && !autoMoving && needsRite && headLook) faceRite();
     if (autoMoving) fwd = Math.max(fwd, 1);
     const moving = Math.abs(fwd) > 0.08;
     autoWalkState(dt, autoMoving, on);
@@ -11284,24 +11290,30 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
         const bend = ll(routeYaw - a.routeYaw);
         if (Math.abs(bend) < ROUTE_BEND * dt) player.turnHead(bend);
       }
-      a.routeYaw = routeYaw;
       // اتجاه السير يأخذ اتجاه المسار، والنظر على حاله
       player.turnBody(ll(routeYaw - player.yaw) * Math.min(1, dt * BODY_TURN_RATE));
       a.faceTo = null;
-      if (autoMoving) {
-        // النظر المناسب للمنسك، ومعه تعديل اللاعب: ما دام إصبعه يسحب فالنظر له، وحيث تركه يبقى
-        const base = routeYaw + guide.lookOffset(game.stage);
-        const view = player.yaw + player.head;
-        if (looking) a.viewOff = ll(view - base);
-        else {
-          if (a.centering) {
-            a.viewOff *= Math.max(0, 1 - dt * LOOK_CENTER_RATE);
-            if (Math.abs(a.viewOff) < 0.005) (a.viewOff = 0), (a.centering = false);
-          }
-          const diff = ll(base + a.viewOff - view);
-          player.turnHead(Math.max(-VIEW_MAX * dt, Math.min(VIEW_MAX * dt, diff * Math.min(1, dt * VIEW_EASE))));
+      // النظر على المسار = النظر المناسب للمنسك + تعديل اللاعب باللمس (viewOff). بالعصا وبالمشي المستمر سواء:
+      //   أول منسك أو هدف جديد (legView): من النظر المناسب، فلا يمشي اللاعب إلى خلف ما يراه. إلا إن ضبط نظره باللمس قبله.
+      //   ثم النظر للّمس وحده: ما دام الإصبع يسحب فالنظر له، وحيث تركه يبقى من المسار. والعصا والسهمان لا يغيّرانه
+      const base = routeYaw + guide.lookOffset(game.stage);
+      const view = player.yaw + player.head;
+      if (looking) a.viewOff = ll(view - base);
+      else {
+        // أول إطار على المسار في هذه الدفعة. ومن رفع إبهامه قبل أن يكتمل لحاق النظر يكمله في دفعته التالية
+        if (a.routeYaw === null) {
+          if (a.legView) a.viewOff = 0;
+          else if (a.viewDirty) a.viewOff = ll(view - base); // ضبط نظره واقفًا (باللمس أو ✓): يبقى كما ضبطه
+          a.legView = a.viewDirty = false;
         }
+        if (a.centering) {
+          a.viewOff *= Math.max(0, 1 - dt * LOOK_CENTER_RATE);
+          if (Math.abs(a.viewOff) < 0.005) (a.viewOff = 0), (a.centering = false);
+        }
+        const diff = ll(base + a.viewOff - view);
+        player.turnHead(Math.max(-VIEW_MAX * dt, Math.min(VIEW_MAX * dt, diff * Math.min(1, dt * VIEW_EASE))));
       }
+      a.routeYaw = routeYaw;
     } else {
       a.routeYaw = null;
       // بلا مسار: جانبا العصا والسهمان يديران اتجاه السير، والنظر على حاله
@@ -11315,33 +11327,34 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
         if (Math.abs(diff) < 0.02) a.faceTo = null;
       } else if (moving) a.faceTo = null;
     }
-    // ✓: النظر إلى اتجاه السير
-    if (a.centering && !autoMoving) {
+    // ✓ بلا مسار: النظر إلى اتجاه السير. (وعلى المسار: إلى النظر المناسب، أعلاه)
+    if (a.centering && !dir) {
       a.faceTo = null;
+      a.viewDirty = true;
       player.head *= Math.max(0, 1 - dt * LOOK_CENTER_RATE);
       if (Math.abs(player.head) < 0.005) (player.head = 0), (a.centering = false);
     }
-    // ✓ يمتلئ حين يخالف النظر اتجاه السير (وفي «مشي مستمر»: حين يخالف النظر المناسب)، وفيه مؤشر اتجاه السير من النظر.
+    // ✓ يمتلئ حين يخالف النظر اتجاه السير (وعلى المسار: حين يخالف النظر المناسب)، وفيه مؤشر اتجاه السير من النظر.
     // وينبض إن مشى اللاعب واتجاه سيره خلف نظره
-    const off = Math.abs(autoMoving ? a.viewOff : player.head) > 0.02;
+    const off = Math.abs(dir ? a.viewOff : player.head) > 0.02;
     if (off !== a.lookOff) (a.lookOff = off), document.body.classList.toggle("look-off", off);
-    const back = moving && !autoMoving && Math.abs(player.head) > LOOK_BACK;
+    const back = moving && Math.abs(player.head) > LOOK_BACK;
     if (back !== a.lookBack) (a.lookBack = back), document.body.classList.toggle("look-back", back);
     if (lookEl && Math.abs(player.head - a.shownHead) > 0.01) {
       a.shownHead = player.head;
       lookEl.style.setProperty("--walk", `${player.head.toFixed(2)}rad`);
     }
-    walkStrip.update(dt, !autoMoving && (Math.abs(player.head) > 0.06 || a.clock - a.turnedT < WALK_STRIP.show));
+    walkStrip.update(dt, a.clock - a.turnedT < WALK_STRIP.show || (!dir && Math.abs(player.head) > 0.06));
     // على المسار: التعديل ميل جانبي بالحركة. وبلا مسار: دوران لاتجاه السير، فلا مشي جانبي
     return { fwd, dir, strafe: dir ? adjust : 0 };
   }
-  // عند موضع المنسك: اتجاه السير إلى ما يستقبله (الحجر الأسود، أو الكعبة). والنظر إليه بهدوء إن طُلب (view)
-  function faceRite(view) {
+  // عند موضع المنسك: اتجاه السير إلى ما يستقبله (الحجر الأسود، أو الكعبة) فلا يبدأ الطواف بعده معكوسًا، والنظر إليه بهدوء
+  function faceRite() {
     const face = guide.arrivalFace(game.stage);
     if (!face) return;
     const p = player.getPos();
     player.turnBody(ll(Math.atan2(-(face[0] - p.x), -(face[1] - p.z)) - player.yaw));
-    assist.faceTo = view ? face : null;
+    assist.faceTo = face;
   }
   // حال «مشي مستمر»: ماشٍ، أو ينتظر (body.auto-wait). ويُطفأ إن علق اللاعب، مع تنبيه يقول لماذا
   function autoWalkState(dt, autoMoving, actionOn) {
