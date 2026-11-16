@@ -288,6 +288,8 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     // إلى خط البداية بالعصا وحدها: المشي الموجّه، ويقف عند الخط
     const n = await page.evaluate(() => {
       let n = 0;
+      // خطوة أولًا: تحت الضغط قد لا يكون إطار حقيقي مرّ بعد ضغط الزر الذهبي، فالزر في النموذج ما زال «لبّيك» المضيء
+      window.__umrah.step(1 / 30);
       while (!window.__umrah.hud.model.action.enabled && n++ < 900) window.__umrah.step(1 / 30);
       for (let i = 0; i < 30; i++) window.__umrah.step(1 / 30);
       return n;
