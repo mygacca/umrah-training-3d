@@ -115,6 +115,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     viewOff: 0, // «مشي مستمر»: تعديل اللاعب (باللمس) على النظر المناسب للمنسك
     adjusted: false, // «مشي مستمر»: عدّل اللاعب موضعه بالعصا أو السهمين، فلا يُعاد إلى أفضل موضع في هذا المنسك
     stick: false, // العصا مدفوعة إلى الأمام في الإطار السابق
+    acted: false, // ضغط اللاعب الزر الذهبي منذ الإطار السابق
     autoMoving: false, // «مشي مستمر» يمشي الآن (لا ينتظر)
     autoWait: false,
     autoJustOn: false,
@@ -216,14 +217,19 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     m.onAutoWalk && m.onAutoWalk(on);
   };
 
+  // الزر الذهبي. assist.acted: المنسك أو الهدف يتغير الآن بضغطة اللاعب لا بوصوله، فمن إبهامه على العصا لا يُوقَف
+  function actRite() {
+    assist.acted = true;
+    game.act();
+  }
   // «اختر»: الزر تحت النظر أو الذراع إن وُجد، وإلا فالمنسك الحالي
   m.select = () => {
     const id = m.mode === "cardboard" ? m.gaze.id : m.mode === "xr" ? m.rayHover : null;
     if (id) return panels.press(id), (m.gaze.consumed = true);
-    game.act();
+    actRite();
   };
   panels.onButton = (id) => {
-    if (id === "action") game.act();
+    if (id === "action") actRite();
     else if (id === "secondary") hud.onCardBtn && hud.onCardBtn();
     else if (id === "walk") m.toggleWalk();
     else if (id === "turnL") player.snapTurn(1);
@@ -350,8 +356,10 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     // من وصل بالعصا إلى موضع منسك: اتجاه سيره ونظره إلى ما يستقبله المنسك (الحجر الأسود، أو الكعبة)، كالمشي المستمر
     if (lit && a.stick && m.guide && headLook) faceRite();
     // من يدفع العصا يقف عند ما يحتاج منسكًا حتى يرفع إبهامه، فلا يتجاوز الهدف ولا يرجع قبل أن يقرأ
+    // (إلا إن تغيّر المنسك بضغطته هو الزرَّ الذهبي والإبهام على العصا: يكمل)
     const stick = fwd > 0.08;
-    if (changed || lit) a.held = a.stick;
+    if ((changed || lit) && !a.acted) a.held = a.stick;
+    a.acted = false;
     a.stick = stick;
     if (!stick) a.held = false;
     if (a.held) fwd = 0;

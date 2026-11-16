@@ -16,7 +16,7 @@ var TAWAF_LOOK = (50 * Math.PI) / 180; // النظر في طواف «مشي مس
 var MAQAM_CLEAR = 2.6; // متر: أقرب ما يمرّ به المسار من مقام إبراهيم
 
 function createRouteGuide({ game, hud, laneAt }) {
-  const g = { sense: 0, rHold: 0, siteSide: 0 };
+  const g = { sense: 0, rHold: 0, siteSide: 0, reached: "" };
   const MAQAM_R = Math.hypot(Sn[0], Sn[1]);
   const MAQAM_PHI = Math.atan2(-Sn[1], Sn[0]);
   // أقرب ما يقترب المسار من الكعبة في كل زاوية: حدّ الحشود المنعَّم (03-crowds.js)، وأبعد عند الحِجر
@@ -149,17 +149,27 @@ function createRouteGuide({ game, hud, laneAt }) {
       return around(x, z, g.sense, g.rHold);
     }
     const T = hud.model.target;
+    if (!T) return null;
+    // بلغ هذا الهدف من قبل: المشي بعده حرّ حتى يتغير المنسك أو الهدف. وإلا تأرجح حول الهدف من يدفع العصا عنده
+    // (يبتعد عنه في اتجاه سيره، فيردّه المسار، فيتجاوزه...). ومن شاء اقترب من الحجر الأسود بعد خط البداية
+    const key = `${stage}|${T}`;
+    if (g.reached === key) return null;
+    const d = toRiteTarget(stage, x, z, T, best);
+    if (!d) g.reached = key;
+    return d;
+  };
+  function toRiteTarget(stage, x, z, T, best) {
     // في مشاعر الحج (SITE): إلى الهدف في خط مستقيم، وحول ما في الطريق (حوض جمرة، أو جبل الرحمة، أو المشعر الحرام)
-    if (SITE) return stage === "hajj" && T ? aroundSite(x, z, T[0], T[1]) : null;
-    if (!GUIDE_STAGES[stage] || !T) return null;
+    if (SITE) return stage === "hajj" ? aroundSite(x, z, T[0], T[1]) : null;
+    if (!GUIDE_STAGES[stage]) return null;
     // إلى بداية الطواف: خط الحجر الأسود على أفضل بعد للطواف، فيبدأ منه
     if (best && stage === "toStart") return toTarget(x, z, Math.cos(we) * TAWAF_BEST_R, -Math.sin(we) * TAWAF_BEST_R, best);
     return toTarget(x, z, T[0], T[1], best && stage === "sai");
-  };
+  }
   // ما يستقبله اللاعب عند موضع المنسك: الحجر الأسود عند خط البداية، والكعبة خلف المقام وعلى الصفا والمروة
   g.arrivalFace = (stage) => (stage === "toStart" ? Ln.black : stage === "toMaqam" || stage === "toSafa" || stage === "sai" ? [0, 0] : null);
   // النظر المناسب في «مشي مستمر»، زاويةً عن اتجاه المسار (موجبة إلى اليسار): في الطواف نحو الكعبة، وفي غيره إلى الأمام
   g.lookOffset = (stage) => (stage === "tawaf" ? TAWAF_LOOK : 0);
-  g.reset = () => ((g.sense = 0), (g.siteSide = 0));
+  g.reset = () => ((g.sense = 0), (g.siteSide = 0), (g.reached = ""));
   return g;
 }

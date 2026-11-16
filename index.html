@@ -8489,7 +8489,7 @@ var TAWAF_LOOK = (50 * Math.PI) / 180; // النظر في طواف «مشي مس
 var MAQAM_CLEAR = 2.6; // متر: أقرب ما يمرّ به المسار من مقام إبراهيم
 
 function createRouteGuide({ game, hud, laneAt }) {
-  const g = { sense: 0, rHold: 0, siteSide: 0 };
+  const g = { sense: 0, rHold: 0, siteSide: 0, reached: "" };
   const MAQAM_R = Math.hypot(Sn[0], Sn[1]);
   const MAQAM_PHI = Math.atan2(-Sn[1], Sn[0]);
   // أقرب ما يقترب المسار من الكعبة في كل زاوية: حدّ الحشود المنعَّم (03-crowds.js)، وأبعد عند الحِجر
@@ -8622,18 +8622,28 @@ function createRouteGuide({ game, hud, laneAt }) {
       return around(x, z, g.sense, g.rHold);
     }
     const T = hud.model.target;
+    if (!T) return null;
+    // بلغ هذا الهدف من قبل: المشي بعده حرّ حتى يتغير المنسك أو الهدف. وإلا تأرجح حول الهدف من يدفع العصا عنده
+    // (يبتعد عنه في اتجاه سيره، فيردّه المسار، فيتجاوزه...). ومن شاء اقترب من الحجر الأسود بعد خط البداية
+    const key = `${stage}|${T}`;
+    if (g.reached === key) return null;
+    const d = toRiteTarget(stage, x, z, T, best);
+    if (!d) g.reached = key;
+    return d;
+  };
+  function toRiteTarget(stage, x, z, T, best) {
     // في مشاعر الحج (SITE): إلى الهدف في خط مستقيم، وحول ما في الطريق (حوض جمرة، أو جبل الرحمة، أو المشعر الحرام)
-    if (SITE) return stage === "hajj" && T ? aroundSite(x, z, T[0], T[1]) : null;
-    if (!GUIDE_STAGES[stage] || !T) return null;
+    if (SITE) return stage === "hajj" ? aroundSite(x, z, T[0], T[1]) : null;
+    if (!GUIDE_STAGES[stage]) return null;
     // إلى بداية الطواف: خط الحجر الأسود على أفضل بعد للطواف، فيبدأ منه
     if (best && stage === "toStart") return toTarget(x, z, Math.cos(we) * TAWAF_BEST_R, -Math.sin(we) * TAWAF_BEST_R, best);
     return toTarget(x, z, T[0], T[1], best && stage === "sai");
-  };
+  }
   // ما يستقبله اللاعب عند موضع المنسك: الحجر الأسود عند خط البداية، والكعبة خلف المقام وعلى الصفا والمروة
   g.arrivalFace = (stage) => (stage === "toStart" ? Ln.black : stage === "toMaqam" || stage === "toSafa" || stage === "sai" ? [0, 0] : null);
   // النظر المناسب في «مشي مستمر»، زاويةً عن اتجاه المسار (موجبة إلى اليسار): في الطواف نحو الكعبة، وفي غيره إلى الأمام
   g.lookOffset = (stage) => (stage === "tawaf" ? TAWAF_LOOK : 0);
-  g.reset = () => ((g.sense = 0), (g.siteSide = 0));
+  g.reset = () => ((g.sense = 0), (g.siteSide = 0), (g.reached = ""));
   return g;
 }
 // اللاعب: المنصّة (rig) والكاميرا، والمشي مع التصادم، والانتقال، والدوران على دفعات.
@@ -11000,6 +11010,7 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     viewOff: 0, // «مشي مستمر»: تعديل اللاعب (باللمس) على النظر المناسب للمنسك
     adjusted: false, // «مشي مستمر»: عدّل اللاعب موضعه بالعصا أو السهمين، فلا يُعاد إلى أفضل موضع في هذا المنسك
     stick: false, // العصا مدفوعة إلى الأمام في الإطار السابق
+    acted: false, // ضغط اللاعب الزر الذهبي منذ الإطار السابق
     autoMoving: false, // «مشي مستمر» يمشي الآن (لا ينتظر)
     autoWait: false,
     autoJustOn: false,
@@ -11101,14 +11112,19 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     m.onAutoWalk && m.onAutoWalk(on);
   };
 
+  // الزر الذهبي. assist.acted: المنسك أو الهدف يتغير الآن بضغطة اللاعب لا بوصوله، فمن إبهامه على العصا لا يُوقَف
+  function actRite() {
+    assist.acted = true;
+    game.act();
+  }
   // «اختر»: الزر تحت النظر أو الذراع إن وُجد، وإلا فالمنسك الحالي
   m.select = () => {
     const id = m.mode === "cardboard" ? m.gaze.id : m.mode === "xr" ? m.rayHover : null;
     if (id) return panels.press(id), (m.gaze.consumed = true);
-    game.act();
+    actRite();
   };
   panels.onButton = (id) => {
-    if (id === "action") game.act();
+    if (id === "action") actRite();
     else if (id === "secondary") hud.onCardBtn && hud.onCardBtn();
     else if (id === "walk") m.toggleWalk();
     else if (id === "turnL") player.snapTurn(1);
@@ -11235,8 +11251,10 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     // من وصل بالعصا إلى موضع منسك: اتجاه سيره ونظره إلى ما يستقبله المنسك (الحجر الأسود، أو الكعبة)، كالمشي المستمر
     if (lit && a.stick && m.guide && headLook) faceRite();
     // من يدفع العصا يقف عند ما يحتاج منسكًا حتى يرفع إبهامه، فلا يتجاوز الهدف ولا يرجع قبل أن يقرأ
+    // (إلا إن تغيّر المنسك بضغطته هو الزرَّ الذهبي والإبهام على العصا: يكمل)
     const stick = fwd > 0.08;
-    if (changed || lit) a.held = a.stick;
+    if ((changed || lit) && !a.acted) a.held = a.stick;
+    a.acted = false;
     a.stick = stick;
     if (!stick) a.held = false;
     if (a.held) fwd = 0;
