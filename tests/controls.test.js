@@ -1,4 +1,5 @@
-// التحكم في الجوال: العصا، والنظر بالسحب و✓، والسهمان، و«مشي مستمر»، والأزرار. بلمس حقيقي عبر CDP، والزمن بـ __umrah.step ليكون ثابتًا.
+// التحكم في الجوال: اتجاه السير (العصا والسهمان) مستقل عن اتجاه النظر (السحب و✓)، و«مشي مستمر»، والأزرار.
+// بلمس حقيقي عبر CDP، والزمن بـ __umrah.step ليكون ثابتًا.
 // اللمسة تبقى على الشاشة بين الخطوات: العصا ممسوكة بالإبهام، والإصبع الثاني يسحب للنظر.
 // في CDP: touchStart وtouchMove يذكران الأصابع كلها، وtouchEnd بإصبع يرفعه وحده، وبلا أصابع يرفعها كلها.
 const { test, describe, before, after, afterEach } = require('node:test');
@@ -9,7 +10,8 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const K = 0.0058; // راديان لكل بكسل سحب باللمس (createPointer في 05-input.js)
 const STEER_RATE = 2; // 10-modes.js
 const TURN_BTN_RATE = 1.5; // 10-modes.js
-const HEAD_LIMIT = (100 * Math.PI) / 180; // 06-player.js
+const TAWAF_BEST_R = 13; // 06-guide.js: أفضل بعد عن الكعبة في «مشي مستمر»
+const TAWAF_LOOK = (50 * Math.PI) / 180; // 06-guide.js: النظر في طواف «مشي مستمر»، من اتجاه السير نحو الكعبة
 const THUMB = { x: 100, y: 620, id: 0 }; // مركز العصا العائمة
 const R = 46; // نصف قطر العصا
 
@@ -98,16 +100,25 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     assert.ok(cosBetween(mv, dirOf(a.yaw)) > 0.9999, 'المشي ليس مستقيمًا باتجاه الجسم');
   });
 
-  test('العصا إلى اليمين أو اليسار: الجسم يدور في مكانه، ومع الأمام يمشي ويدور', async () => {
+  const walkHint = () =>
+    page.evaluate(() => ({ strip: window.__umrah.modes.walkStrip.mesh.visible, pointer: parseFloat(document.getElementById('lookReset').style.getPropertyValue('--walk')) || 0 }));
+
+  test('العصا إلى اليمين أو اليسار: اتجاه السير يدور في مكانه والنظر على حاله، ومع الأمام يمشي ويدور', async () => {
     await pose(-30, 30, 1, 0);
+    assert.equal((await walkHint()).strip, false, 'شريط الأرض ظاهر والنظر إلى اتجاه السير');
     await stick(1, 0);
     const a = await state();
     await steps(30); // ثانية
     const b = await state();
     assert.ok(Math.abs(a.yaw - b.yaw - STEER_RATE) < 0.12, `دار ${(a.yaw - b.yaw).toFixed(2)} راديان في ثانية`);
     assert.ok(Math.hypot(b.x - a.x, b.z - a.z) < 0.05, 'تحرّك وهو يدور في مكانه');
-    assert.ok(Math.abs(wrap(b.view - a.view) + STEER_RATE) < 0.12, 'النظر لم يدر مع الجسم');
-    // إلى الأمام واليسار: يمشي ويدور يسارًا
+    assert.ok(Math.abs(wrap(b.view - a.view)) < 1e-6, 'العصا غيّرت اتجاه النظر');
+    // ما يُري اتجاه السير: شريط الأسهم على الأرض، والمؤشر داخل ✓ (السير عن يمين النظر)
+    const hint = await walkHint();
+    assert.equal(hint.strip, true, 'لا شريط على الأرض واتجاه السير يخالف النظر');
+    assert.ok(Math.abs(hint.pointer - b.head) < 0.02 && hint.pointer > 1.5, `مؤشر اتجاه السير ${hint.pointer}`);
+    assert.equal(await lookOff(), true, '✓ لم يمتلئ واتجاه السير يخالف النظر');
+    // إلى الأمام واليسار: يمشي ويدور يسارًا، والنظر على حاله
     await touch('touchMove', thumbAt(-0.7, 0.7));
     await D.frames(1);
     await steps(30);
@@ -115,6 +126,15 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     await release();
     assert.ok(c.yaw - b.yaw > 0.8, 'لم يدر يسارًا وهو يمشي');
     assert.ok(Math.hypot(c.x - b.x, c.z - b.z) > 1, 'لم يمشِ وهو يدور');
+    assert.ok(Math.abs(wrap(c.view - a.view)) < 1e-6, 'العصا غيّرت اتجاه النظر أثناء المشي');
+    // ✓: النظر إلى اتجاه السير، والسير على حاله. ويختفي شريط الأرض بعد قليل
+    const still = await state(); // بعد رفع الإبهام
+    await centerLook();
+    const d = await state();
+    assert.equal(d.head, 0, '✓ لم يعد النظر إلى اتجاه السير');
+    assert.ok(Math.abs(d.yaw - still.yaw) < 1e-6, '✓ غيّر اتجاه السير');
+    await steps(60);
+    assert.equal((await walkHint()).strip, false, 'شريط الأرض باقٍ بعد ✓');
   });
 
   const centerLook = async () => {
@@ -127,7 +147,7 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     return { x: b.x + b.width / 2, y: b.y + b.height / 2, id };
   };
 
-  test('السحب يدير الرأس لا الجسم، والنظرة تبقى حيث تُركت، و✓ الظاهر دائمًا يعيدها إلى الأمام', async () => {
+  test('السحب يغيّر النظر لا اتجاه السير، والنظرة تبقى حيث تُركت، و✓ الظاهر دائمًا يعيدها إلى اتجاه السير', async () => {
     await pose(-30, 30, 1, 0);
     const a = await state();
     assert.equal(await page.isVisible('#lookReset'), true, '✓ غير ظاهر والنظر إلى الأمام');
@@ -157,7 +177,7 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     assert.equal(await page.locator('#lookTrack').count(), 0, 'شريط زاوية النظر ما زال في الصفحة');
   });
 
-  test('ماشيًا بإصبعين: السحب والإبهام على العصا، والطريق لا يتغير، ومن أكمل الالتفات دار جسمه', async () => {
+  test('ماشيًا بإصبعين: السحب والإبهام على العصا، والطريق لا يتغير، ولو التفت إلى الخلف', async () => {
     await pose(-36, 30, 1, 0);
     await stick(0, 1);
     await steps(20);
@@ -177,16 +197,24 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     await release();
     assert.ok(c.joy[1] > 0.9, 'رفع إصبع النظر ألغى العصا');
     assert.ok(Math.abs(c.head - b.head) < 1e-6, 'النظرة تغيّرت بعد رفع الإصبع');
-    // واقفًا: سحب أكثر مما بقي للرأس يدير الجسم معه
-    await look(2.4);
+    // النظر مستقل تمامًا: يلتفت إلى الخلف واتجاه السير على حاله، ثم يمشي إلى حيث كان يمشي. و✓ ينبض لأنه يمشي إلى خلف ما يراه
+    await look(2.0);
     await release();
     const d = await state();
-    assert.ok(Math.abs(d.head - HEAD_LIMIT) < 0.01, `الرأس ${d.head.toFixed(2)} لا عند حدّه`);
-    assert.ok(Math.abs(d.yaw - c.yaw - (c.head + 2.4 - HEAD_LIMIT)) < 0.04, 'ما زاد عن حد الرأس لم يدر الجسم');
+    assert.ok(Math.abs(d.head - (c.head + 2.0)) < 0.04, `النظر ${d.head.toFixed(2)} لا ${(c.head + 2.0).toFixed(2)}`);
+    assert.ok(Math.abs(d.yaw - c.yaw) < 1e-6, 'السحب الطويل أدار اتجاه السير');
+    await stick(0, 1);
+    await steps(30);
+    const e = await state();
+    const pulse = await page.evaluate(() => document.body.classList.contains('look-back'));
+    await release();
+    assert.ok(cosBetween([e.x - d.x, e.z - d.z], dirOf(a.yaw)) > 0.9999, 'الالتفات إلى الخلف غيّر الطريق');
+    assert.equal(pulse, true, '✓ لا ينبض واللاعب يمشي إلى خلف ما يراه');
     await centerLook();
+    assert.equal(await page.evaluate(() => document.body.classList.contains('look-back')), false);
   });
 
-  test('السهمان: دوران ناعم ما دام الإصبع على السهم، بلا قفزات، ويعملان والإبهام على العصا', async () => {
+  test('السهمان: دوران ناعم لاتجاه السير ما دام الإصبع على السهم، والنظر على حاله، ويعملان والإبهام على العصا', async () => {
     await pose(-30, 30, 1, 0);
     const a = await state();
     // لمسة قصيرة: دورة صغيرة ناعمة ثم يقف
@@ -223,9 +251,9 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     await steps(10);
     assert.ok(Math.abs((await state()).yaw - c.yaw) < 0.01, 'الدوران لم يقف بعد رفع الإصبع');
     assert.ok(b2.yaw - c.yaw >= run.total - 1e-6, 'الدوران رجع بعد رفع الإصبع');
-    assert.ok(Math.abs(c.head) < 1e-6, 'السهم غيّر زاوية النظر والجسم حرّ');
-    assert.ok(Math.abs(wrap(c.view - c.yaw)) < 1e-6, 'النظر لم يدر مع الجسم');
-    // والإبهام على العصا: السهم يدير والمشي مستمر
+    assert.ok(Math.abs(wrap(c.view - a.view)) < 1e-6, 'السهم غيّر اتجاه النظر');
+    assert.ok(Math.abs(wrap(c.head - (a.yaw - c.yaw))) < 1e-6, 'النظر لم يبقَ على حاله واتجاه السير يدور');
+    // والإبهام على العصا: السهم يدير اتجاه السير والمشي مستمر
     await stick(0, 1);
     await steps(10);
     const d = await state();
@@ -237,9 +265,11 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     assert.ok(e.joy[1] > 0.9, 'إصبع السهم ألغى العصا');
     assert.ok(e.yaw - d.yaw > 0.8, 'السهم لم يدر والإبهام على العصا');
     assert.ok(Math.hypot(e.x - d.x, e.z - d.z) > 1.5, 'المشي توقف أثناء الدوران بالسهم');
+    assert.ok(Math.abs(wrap(e.view - a.view)) < 1e-6, 'السهم غيّر اتجاه النظر والإبهام على العصا');
+    await centerLook();
   });
 
-  test('الطواف: ينظر إلى الكعبة وهو يطوف، والأشواط تُحتسب، والجانب يقرّب من الكعبة', async () => {
+  test('الطواف بالعصا: النظر يدور مع المسار فتبقى الكعبة أمام من ينظر إليها، والسهم والجانب يقرّبان ويبعدان', async () => {
     await D.act('لبّيك');
     // إلى خط البداية بالعصا وحدها: المشي الموجّه، ويقف عند الخط
     await stick(0, 1);
@@ -254,11 +284,12 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     assert.ok(n < 900 && atLine.action.label.includes('أشِر'), 'العصا لم توصل إلى خط البداية');
     const moved = await page.evaluate(() => window.__umrah.player.speed);
     assert.ok(moved < 0.1, 'لم يقف عند خط البداية والعصا مدفوعة');
-    // ينظر إلى الحجر الأسود بعد الوصول
+    // بعد الوصول بالعصا: اتجاه السير إلى الحجر الأسود (فلا يبدأ الطواف معكوسًا)، والنظر على حاله
     await steps(90);
     const s0 = await state();
     const stone = toWorld(KAABA.lx / 2, KAABA.lz / 2);
-    assert.ok(Math.abs(wrap(s0.view - Math.atan2(-(stone[0] - s0.x), -(stone[1] - s0.z)))) < 0.1, 'لم ينظر إلى الحجر الأسود');
+    assert.ok(Math.abs(wrap(s0.yaw - Math.atan2(-(stone[0] - s0.x), -(stone[1] - s0.z)))) < 0.1, 'اتجاه السير ليس إلى الحجر الأسود');
+    assert.ok(Math.abs(wrap(s0.view - atLine.view)) < 1e-6, 'النظر تغيّر وحده بعد الوصول بالعصا');
     await D.act('أشِر');
     // على بعد 20 م من الكعبة: خارج ما يبتعد به المسار حول الحِجر
     await page.evaluate(() => {
@@ -268,12 +299,14 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
       player.teleport(p.x * k, p.z * k, -p.x, -p.z);
       step(1 / 30);
     });
-    // يطوف، ثم يلتفت برأسه إلى الكعبة عن يساره ويبقي إصبعه
+    // ينظر إلى الكعبة ويدفع العصا: يطوف والكعبة عن يساره، واتجاه السير مع المسار، والنظر ما زال إلى الكعبة
     await stick(0, 1);
     await steps(60);
     const a = await state();
     const r0 = Math.hypot(a.x, a.z);
-    // بالسحب: 90° إلى اليسار، ثم يرفع إصبعه والنظرة باقية
+    assert.ok(Math.abs(wrap(a.yaw - Math.atan2(-a.z, a.x))) < 0.15, 'اتجاه السير ليس مع مسار الطواف');
+    assert.ok(Math.abs(wrap(a.view - Math.atan2(a.x, a.z))) < 0.2, 'النظر ترك الكعبة حين بدأ المشي');
+    // بالسحب: تعديل صغير، ثم يرفع إصبعه والنظرة باقية
     const finger = await look(Math.PI / 2 - a.head - 0.12, { thumb: thumbAt(0, 1) });
     await touch('touchEnd', finger);
     await D.frames(1);
@@ -300,16 +333,19 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     assert.ok(t.worst < 0.35, `الكعبة خرجت من وسط النظر (${t.worst.toFixed(2)} راديان)`);
     assert.ok(t.rMin > r0 - 0.5 && t.rMax < r0 + 0.5, 'البعد عن الكعبة تغيّر');
     assert.ok(t.head > 1.2, 'النظرة لم تبقَ نحو الكعبة');
-    // على مسار الطواف السهم يدير الرأس لا الطريق: الجسم مع المسار
+    // على مسار الطواف السهم يميل بالحركة: الأيمن يبعد عن الكعبة، والنظر على حاله من المسار. ويبقى حيث وصل
     const before = await state();
     const arrow = await center('#turnRBtn');
     await touch('touchStart', thumbAt(0, 1), arrow);
-    await steps(15);
+    await steps(30);
     await touch('touchEnd', arrow);
     await steps(15);
-    const turnedHead = await state();
-    assert.ok(before.head - turnedHead.head > 0.3, 'السهم لم يدر الرأس على مسار الطواف');
-    assert.ok(Math.abs(Math.hypot(turnedHead.x, turnedHead.z) - Math.hypot(before.x, before.z)) < 0.3, 'السهم غيّر مسار الطواف');
+    const drifted = await state();
+    assert.ok(Math.hypot(drifted.x, drifted.z) - Math.hypot(before.x, before.z) > 0.8, 'السهم الأيمن لم يبعد عن الكعبة في الطواف');
+    assert.ok(Math.abs(drifted.head - before.head) < 0.1, 'السهم غيّر اتجاه النظر على مسار الطواف');
+    await steps(60);
+    const kept = await state();
+    assert.ok(Math.abs(Math.hypot(kept.x, kept.z) - Math.hypot(drifted.x, drifted.z)) < 0.3, 'لم يبقَ على البعد الذي وصل إليه بالسهم');
     // ✓ والإبهام على العصا، ثم العصا إلى الأمام واليسار: يقترب من الكعبة وما زال يطوف
     const okFinger = await center('#lookReset');
     await touch('touchStart', thumbAt(0, 1), okFinger);
@@ -321,23 +357,22 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     await steps(60);
     const c = await state();
     await release();
-    assert.ok(Math.abs(c.head) < 0.1, 'النظرة لم تعد إلى الأمام');
+    assert.ok(Math.abs(c.head) < 0.1, 'النظرة لم تعد إلى اتجاه السير');
     assert.ok(Math.hypot(c.x, c.z) < Math.hypot(b.x, b.z) - 1.5, 'العصا إلى اليسار لم تقرّب من الكعبة');
     assert.equal((await D.dbg()).stats.wrong, 0);
   });
 
-  test('مشي مستمر: يدور حول الكعبة وحده ولو أُطفئ المشي الموجّه، والعصا لا تلغيه', async () => {
-    // في الطواف (من الاختبار السابق). المشي الموجّه مطفأ من القائمة، واللاعب ينظر عكس اتجاه الطواف
+  test('مشي مستمر: يأخذ أفضل بعد عن الكعبة ونظرًا مناسبًا ولو أُطفئ المشي الموجّه، واللاعب يعدّل الاثنين', async () => {
+    // في الطواف (من الاختبار السابق). المشي الموجّه مطفأ من القائمة، واللاعب متجه عكس اتجاه الطواف.
+    // من بعد الركن الشامي (200°): لا حِجر ولا مقام في الطريق
     await page.tap('#menuBtn');
     await page.tap('#menu label:has(input[data-opt="guide"])');
     await page.tap('#menuClose');
     assert.equal(await page.evaluate(() => window.__umrah.modes.guide), false);
     await page.evaluate(() => {
       const { player, step } = window.__umrah;
-      const p = player.getPos();
-      const k = 18 / Math.hypot(p.x, p.z);
-      const phi = Math.atan2(-p.z, p.x);
-      player.teleport(p.x * k, p.z * k, Math.sin(phi), Math.cos(phi)); // مع عقارب الساعة
+      const phi = (200 * Math.PI) / 180;
+      player.teleport(Math.cos(phi) * 18, -Math.sin(phi) * 18, Math.sin(phi), Math.cos(phi)); // مع عقارب الساعة
       step(1 / 30);
     });
     const a = await state();
@@ -352,15 +387,46 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     const mid = await state();
     await release();
     assert.equal(mid.autoWalk, true, 'العصا ألغت المشي المستمر');
-    await steps(240);
+    await steps(120);
     const b = await state();
     const d1 = await D.dbg();
     assert.equal(b.autoWalk, true, 'المشي المستمر توقف وحده في الطواف');
-    // 450 خطوة × 8 سم = 36 م على بعد 18 م: راديانان
-    assert.ok(d1.T.cum - d0.T.cum > 1.9, `تقدّم الطواف ${(d1.T.cum - d0.T.cum).toFixed(2)} راديان فقط`);
+    // 330 خطوة × 8 سم = 26 م على بعد 18 إلى 13 م. (المسار كله قبل الحِجر: نحو 180° من 200°)
+    assert.ok(d1.T.cum - d0.T.cum > 1.6, `تقدّم الطواف ${(d1.T.cum - d0.T.cum).toFixed(2)} راديان فقط`);
     assert.equal(d1.stats.wrong - d0.stats.wrong, 0, 'المشي المستمر مشى عكس الاتجاه');
     assert.equal(d1.stats.hijr - d0.stats.hijr, 0, 'المشي المستمر دخل الحِجر');
-    assert.ok(Math.abs(Math.hypot(b.x, b.z) - Math.hypot(a.x, a.z)) < 0.6, 'البعد عن الكعبة تغيّر');
+    // أفضل موضع: اقترب من الكعبة بهدوء حتى أفضل بعد، وبقي عليه
+    assert.ok(Math.hypot(a.x, a.z) > 17.5, 'لم يبدأ من 18 م');
+    assert.ok(Math.abs(Math.hypot(b.x, b.z) - TAWAF_BEST_R) < 0.5, `البعد عن الكعبة ${Math.hypot(b.x, b.z).toFixed(1)} م لا ${TAWAF_BEST_R}`);
+    // زاوية حركة مناسبة ونظر مناسب: السير مع المسار، والنظر منه نحو الكعبة
+    assert.ok(Math.abs(wrap(b.yaw - Math.atan2(-b.z, b.x))) < 0.15, 'اتجاه السير ليس مع مسار الطواف');
+    assert.ok(Math.abs(b.head - TAWAF_LOOK) < 0.08, `النظر ${b.head.toFixed(2)} عن اتجاه السير لا ${TAWAF_LOOK.toFixed(2)}`);
+    assert.equal(await lookOff(), false, '✓ ممتلئ والنظر هو المناسب للمنسك');
+    // اللمس يعدّل زاوية الرؤية: تبقى حيث تُركت، و✓ يعيدها إلى النظر المناسب
+    await look(-0.4);
+    await release();
+    await steps(40);
+    const v = await state();
+    assert.equal(v.autoWalk, true, 'السحب ألغى المشي المستمر');
+    assert.ok(Math.abs(v.head - (TAWAF_LOOK - 0.4)) < 0.08, `النظر بعد السحب ${v.head.toFixed(2)}`);
+    assert.equal(await lookOff(), true);
+    await page.tap('#lookReset');
+    await steps(60);
+    assert.ok(Math.abs((await state()).head - TAWAF_LOOK) < 0.08, '✓ لم يعد النظر المناسب للمنسك');
+    // السهم يعدّل زاوية الحركة: الأيسر يقرّب من الكعبة، والنظر على حاله من المسار، ولا يُعاد إلى أفضل بعد
+    const r1 = Math.hypot(v.x, v.z);
+    const arrow = await center('#turnLBtn');
+    await touch('touchStart', arrow);
+    await steps(30);
+    await touch('touchEnd', arrow);
+    await steps(20);
+    const near = await state();
+    assert.equal(near.autoWalk, true, 'السهم ألغى المشي المستمر');
+    assert.ok(r1 - Math.hypot(near.x, near.z) > 0.8, 'السهم الأيسر لم يقرّب من الكعبة');
+    assert.ok(Math.abs(near.head - TAWAF_LOOK) < 0.1, 'السهم غيّر اتجاه النظر');
+    await steps(60);
+    const stay = await state();
+    assert.ok(Math.abs(Math.hypot(stay.x, stay.z) - Math.hypot(near.x, near.z)) < 0.3, 'أُعيد إلى أفضل بعد بعد تعديل اللاعب');
     // يقف بزرّه
     await page.tap('#autoWalkBtn');
     assert.equal((await state()).autoWalk, false);

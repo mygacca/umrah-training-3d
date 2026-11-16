@@ -219,8 +219,24 @@ body:not([data-mode="desktop"]) .desktop-only { display: none !important; }
   color: var(--ivory);
   font: 600 20px/1 var(--kufi);
 }
-#lookReset { border-color: var(--gold); color: var(--gold-hi); font-weight: 800; }
+#lookReset { position: relative; border-color: var(--gold); color: var(--gold-hi); font-weight: 800; }
 body.look-off #lookReset { background: var(--gold); color: var(--deep); }
+/* مؤشر داخل ✓: اتجاه السير من اتجاه النظر (إلى أعلى = النظر إلى حيث يمشي). --walk يضبطه 10-modes.js */
+#lookReset::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: -4px 0 0 -5px;
+  border: 5px solid transparent;
+  border-top: 0;
+  border-bottom: 8px solid currentColor;
+  transform: rotate(var(--walk, 0rad)) translateY(-17px);
+  pointer-events: none;
+}
+/* يمشي إلى خلف ما يراه: ✓ ينبض */
+body.look-back #lookReset { animation: lookBack 0.9s ease-in-out infinite; }
+@keyframes lookBack { 50% { box-shadow: 0 0 0 7px rgba(240, 201, 106, 0.45); } }
 body.gyro-look #lookReset { display: none; }
 #jogBtn, #autoWalkBtn {
   height: 46px;

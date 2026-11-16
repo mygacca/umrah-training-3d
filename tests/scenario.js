@@ -124,11 +124,11 @@ function runUmrah(mode) {
         assert.ok(cos > 0.95, `المشي ليس إلى الهدف (${cos.toFixed(2)})`);
         await D.frames(1);
         assert.deepEqual(await page.locator('#joy').boundingBox(), home, 'العصا لم تعد إلى مكانها');
-        // زاوية النظر لا تعود وحدها: باقية بعد المشي، و✓ بجانب الشريط يعيدها إلى الأمام
-        assert.ok(Math.abs((await page.evaluate(() => window.__umrah.player.head)) - turned) < 0.02, 'زاوية النظر تغيّرت وحدها');
+        // اتجاه النظر لا يتغير بالمشي: باقٍ كما تركه السحب، و✓ يعيده إلى اتجاه السير
+        assert.ok(Math.abs(angleDiff(await heading(), h0) - turned) < 0.03, 'اتجاه النظر تغيّر بالمشي');
         await page.tap('#lookReset');
         await page.waitForFunction(() => window.__umrah.player.head === 0, null, { timeout: 15000 });
-        // «مشي مستمر»: يمشي وحده ويلتفت مع المسار، ويقف عند خط الحجر الأسود لأن المنسك يحتاج الزر، ثم ينظر إلى الحجر
+        // «مشي مستمر»: يمشي وحده إلى أفضل موضع والنظر مع المسار، ويقف عند خط الحجر الأسود لأن المنسك يحتاج الزر، ثم ينظر إلى الحجر
         await page.tap('#autoWalkBtn');
         assert.equal(await page.evaluate(() => window.__umrah.modes.autoWalk), true);
         const w = await page.evaluate(() => {
@@ -148,7 +148,8 @@ function runUmrah(mode) {
         assert.equal(w.pressed, 'false');
         assert.equal(w.stage, 'toStart');
         assert.ok(w.action.enabled && w.action.label.includes('أشِر'), 'المشي المستمر لم يقف عند خط البداية');
-        assert.ok(w.align < 0.15, `الكاميرا لم تلتفت مع المسار (${w.align.toFixed(2)})`);
+        assert.ok(w.align < 0.15, `النظر لم يأخذ اتجاه المسار (${w.align.toFixed(2)})`);
+        assert.ok(Math.abs(Math.hypot(w.p.x, w.p.z) - 13) < 1.2, `وقف على ${Math.hypot(w.p.x, w.p.z).toFixed(1)} م من الكعبة لا على أفضل بعد`);
         const stone = toWorld(KAABA.lx / 2, KAABA.lz / 2); // ركن الحجر الأسود
         const toStone = Math.atan2(-(stone[0] - w.p.x), -(stone[1] - w.p.z));
         assert.ok(Math.abs(angleDiff(w.heading, toStone)) < 0.1, 'لم ينظر إلى الحجر الأسود بعد الوصول');
@@ -178,15 +179,14 @@ function runUmrah(mode) {
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...thumb, y: 620 }] });
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [thumb] });
           await D.frames(2);
-          const before = await page.evaluate(() => window.__umrah.player.headingYaw());
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [thumb, { ...f, id: 1 }] });
           await D.frames(2);
-          const st = await page.evaluate(() => ({ turned: window.__umrah.player.headingYaw(), jog: window.__umrah.player.jogToggle, joy: window.__umrah.input.joystick.y }));
+          const st = await page.evaluate(() => ({ turning: window.__umrah.modes.assist.turnVel !== 0, jog: window.__umrah.player.jogToggle, joy: window.__umrah.input.joystick.y }));
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); // يرفع الإصبعين
-          return { ...st, turned: Math.abs(st.turned - before) > 0.02 }; // السهم يدير النظر (والتفصيل في controls.test.js)
+          return st; // السهم يعدّل اتجاه السير (والتفصيل في controls.test.js)
         };
         const t = await withThumb('#turnRBtn');
-        assert.ok(t.turned, 'السهم لا يدير والإبهام على العصا');
+        assert.ok(t.turning, 'السهم لا يعمل والإبهام على العصا');
         assert.ok(t.joy > 0.5, 'الإصبع الثاني ألغى لمسة العصا');
         const j = await withThumb('#jogBtn');
         assert.equal(j.jog, true, 'زر الهرولة لا يعمل والإبهام على العصا');
@@ -581,14 +581,14 @@ function runUmrah(mode) {
           step(1 / 30);
           game.act();
           out.stage = game.stage;
-          // ينظر إلى الكعبة على بعد 20 م: يمشي والكعبة عن يساره، على البعد نفسه، والكاميرا مع المسار
+          // ينظر إلى الكعبة على بعد 20 م: يمشي والكعبة عن يساره، على البعد نفسه، واتجاه السير مع المسار والنظر ما زال إلى الكعبة
           let p = polar();
           player.teleport(Math.cos(p.phi) * 20, -Math.sin(p.phi) * 20, -Math.cos(p.phi), Math.sin(p.phi));
           const cum0 = game.debug().T.cum;
           const rs = [];
           push(240, (q) => rs.push(q.r));
           p = polar();
-          out.tawaf = { turned: game.debug().T.cum - cum0, r: [Math.min(...rs.slice(10)), Math.max(...rs)], heading: Math.abs(wrap(player.headingYaw() - p.phi)) };
+          out.tawaf = { turned: game.debug().T.cum - cum0, r: [Math.min(...rs.slice(10)), Math.max(...rs)], heading: Math.abs(wrap(player.yaw - p.phi)), view: Math.abs(wrap(player.headingYaw() - p.phi - Math.PI / 2)) };
           // قريبًا من الكعبة (11 م) قبل الركن العراقي: يبتعد حول الحِجر ثم يعود
           player.teleport(Math.cos(1.3) * 11, -Math.sin(1.3) * 11, -Math.sin(1.3), -Math.cos(1.3));
           const hijrSide = [];
@@ -606,26 +606,46 @@ function runUmrah(mode) {
           let n = 0;
           let maxX = 0;
           let midHeading = null;
+          let midX = null;
           while (modes.autoWalk && n++ < 1800) {
             step(1 / 30);
             const q = player.getPos();
             if (q.z < 10 && q.z > -80) maxX = Math.max(maxX, q.x);
-            if (q.z < -30 && midHeading === null) midHeading = player.headingYaw();
+            if (q.z < -30 && midHeading === null) (midHeading = player.headingYaw()), (midX = q.x);
           }
-          out.sai = { n, autoWalk: modes.autoWalk, lap: game.debug().A.lap, dua: hud.model.action.enabled, maxX, midHeading };
+          out.sai = { n, autoWalk: modes.autoWalk, lap: game.debug().A.lap, dua: hud.model.action.enabled, maxX, midHeading, midX };
+          // الشوط الثاني: بعد الدعاء يعبر عند طرف الحاجز إلى شرقيه، ويعود إلى الصفا في وسط المسار والنظر إليها
+          game.act();
+          step(1 / 30);
+          modes.setAutoWalk(true);
+          let minX = 1e9;
+          let back = null;
+          for (let i = 0; i < 900 && modes.autoWalk && back === null; i++) {
+            step(1 / 30);
+            const q = player.getPos();
+            if (q.z > -80) minX = Math.min(minX, q.x);
+            if (q.z > -50) back = { x: q.x, heading: player.headingYaw() };
+          }
+          modes.setAutoWalk(false);
+          out.back = { minX, ...back };
           return out;
         });
         if (process.env.UMRAH_DEBUG) console.error('guide', JSON.stringify(r));
         assert.equal(r.stage, 'tawaf', 'المشي الموجّه لم يصل إلى خط البداية');
         assert.ok(r.tawaf.turned > 0.8, `الطواف الموجّه تقدّم ${r.tawaf.turned.toFixed(2)} راديان`);
         assert.ok(r.tawaf.r[0] > 19.4 && r.tawaf.r[1] < 20.6, `البعد عن الكعبة تغيّر: ${r.tawaf.r.map((x) => x.toFixed(2))}`);
-        assert.ok(r.tawaf.heading < 0.15, 'الكاميرا لم تلتفت مع الطواف');
+        assert.ok(r.tawaf.heading < 0.15, 'اتجاه السير ليس مع مسار الطواف');
+        assert.ok(r.tawaf.view < 0.2, 'النظر لم يبقَ إلى الكعبة مع انحناء المسار');
         assert.deepEqual([r.hijr.entered, r.hijr.wrong], [0, 0], 'المشي الموجّه دخل الحِجر أو عكس الاتجاه');
         assert.ok(r.hijr.nearest > 15, `مرّ على ${r.hijr.nearest.toFixed(1)} م من الكعبة عند الحِجر`);
         assert.ok(r.hijr.after < 12.5, 'لم يعد إلى قرب الكعبة بعد الحِجر');
         assert.deepEqual([r.sai.autoWalk, r.sai.lap, r.sai.dua], [false, 1, true], 'السعي بالمشي المستمر');
         assert.ok(r.sai.maxX < 74.5, 'الذاهب إلى المروة عبر إلى شرقي الحاجز');
-        assert.ok(Math.abs(angleDiff(r.sai.midHeading, 0)) < 0.15, 'الكاميرا لم تلتفت إلى المروة');
+        assert.ok(Math.abs(angleDiff(r.sai.midHeading, 0)) < 0.15, 'النظر ليس إلى المروة');
+        assert.ok(Math.abs(r.sai.midX - 71) < 0.5, `الذاهب إلى المروة ليس في وسط مساره (x = ${r.sai.midX.toFixed(1)})`);
+        assert.ok(r.back.minX > 75.5, 'العائد إلى الصفا لم يعبر إلى شرقي الحاجز عند طرفه');
+        assert.ok(Math.abs(r.back.x - 79) < 0.5, `العائد إلى الصفا ليس في وسط مساره (x = ${r.back.x.toFixed(1)})`);
+        assert.ok(Math.abs(angleDiff(r.back.heading, Math.PI)) < 0.15, 'النظر ليس إلى الصفا في الشوط الثاني');
         assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
       });
 
