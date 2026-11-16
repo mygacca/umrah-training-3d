@@ -274,13 +274,16 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     // الإبهام على العصا أولًا، ثم الزر الذهبي بإصبع ثانٍ
     await stick(0, 1);
     const gold = await page.evaluate(() => window.__umrah.panels.buttonScreen('action'));
-    // (تحت ضغط التشغيل المتوازي قد تضيع لمسة على لوحة الرسم: تُعاد مرة)
-    const tapGold = async () => {
-      await touch('touchStart', thumbAt(0, 1), { x: gold.x, y: gold.y, id: 1 });
-      await touch('touchEnd', { x: gold.x, y: gold.y, id: 1 });
-      return page.waitForFunction(() => window.__umrah.game.stage === 'toStart', null, { timeout: 4000 }).then(() => true, () => false);
-    };
-    assert.ok((await tapGold()) || (await tapGold()), 'الزر الذهبي لم يُضغط والإبهام على العصا');
+    // زمن اللمس والرفع محدَّد (80 ملّي ثانية بينهما) ويُرسلان معًا: تحت ضغط التشغيل المتوازي كان الرفع يتأخر
+    // أكثر من 600 ملّي ثانية، فتُحسب ضغطة طويلة لا نقرة
+    const t0 = Date.now() / 1000;
+    const goldFinger = { x: gold.x, y: gold.y, id: 1 };
+    await Promise.all([
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [thumbAt(0, 1), goldFinger], timestamp: t0 }),
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [goldFinger], timestamp: t0 + 0.08 }),
+    ]);
+    await page.waitForFunction(() => window.__umrah.game.stage === 'toStart', null, { timeout: 8000 }).catch(() => {});
+    assert.equal((await state()).stage, 'toStart', 'الزر الذهبي لم يُضغط والإبهام على العصا');
     assert.ok((await state()).joy[1] > 0.9, 'لمسة الزر الذهبي ألغت العصا');
     // إلى خط البداية بالعصا وحدها: المشي الموجّه، ويقف عند الخط
     const n = await page.evaluate(() => {
@@ -291,7 +294,8 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     });
     const atLine = await state();
     await release();
-    assert.ok(n < 900 && atLine.action.label.includes('أشِر'), 'العصا لم توصل إلى خط البداية');
+    const why = await page.evaluate(() => ({ held: window.__umrah.modes.assist.held, stick: window.__umrah.modes.assist.stick, reached: window.__umrah.modes.guideDir, enabled: window.__umrah.player.enabled, target: window.__umrah.hud.model.target }));
+    assert.ok(n < 900 && atLine.action.label.includes('أشِر'), `العصا لم توصل إلى خط البداية: ${JSON.stringify({ n, atLine, why })}`);
     const moved = await page.evaluate(() => window.__umrah.player.speed);
     assert.ok(moved < 0.1, 'لم يقف عند خط البداية والعصا مدفوعة');
     // من ضغط الزر الذهبي وإبهامه على العصا لا يُوقَف: الوقوف لمن وصل، لا لمن أدّى المنسك. (هنا في الإحرام: لبّيك ← إلى خط البداية)
