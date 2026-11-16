@@ -116,6 +116,8 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     adjusted: false, // «مشي مستمر»: عدّل اللاعب موضعه بالعصا أو السهمين، فلا يُعاد إلى أفضل موضع في هذا المنسك
     stick: false, // العصا مدفوعة إلى الأمام في الإطار السابق
     acted: false, // ضغط اللاعب الزر الذهبي منذ الإطار السابق
+    px: 0, // موضع اللاعب في الإطار السابق
+    pz: 0,
     autoMoving: false, // «مشي مستمر» يمشي الآن (لا ينتظر)
     autoWait: false,
     autoJustOn: false,
@@ -352,6 +354,10 @@ function createModes({ renderer, scene, camera, player, hud, panels, game, input
     a.key = key;
     a.enabled = on;
     if (changed) (a.adjusted = false), (a.legView = true); // منسك أو هدف جديد: من أفضل موضع ومن النظر المناسب
+    // «بلغ الهدف» يُنسى إن تغيّر المنسك أو الهدف (قد يعود المنسك نفسه لاحقًا)، أو انتقل اللاعب قفزًا (القائمة، أو إعادة التدريب)
+    const here = player.getPos();
+    if (changed || Math.hypot(here.x - a.px, here.z - a.pz) > 3) guide.reached = "";
+    (a.px = here.x), (a.pz = here.z);
     if (game.stage === "done") m.setAutoWalk(false);
     // من وصل بالعصا إلى موضع منسك: اتجاه سيره ونظره إلى ما يستقبله المنسك (الحجر الأسود، أو الكعبة)، كالمشي المستمر
     if (lit && a.stick && m.guide && headLook) faceRite();

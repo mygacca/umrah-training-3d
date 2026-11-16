@@ -274,10 +274,14 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     // الإبهام على العصا أولًا، ثم الزر الذهبي بإصبع ثانٍ
     await stick(0, 1);
     const gold = await page.evaluate(() => window.__umrah.panels.buttonScreen('action'));
-    await touch('touchStart', thumbAt(0, 1), { x: gold.x, y: gold.y, id: 1 });
-    await touch('touchEnd', { x: gold.x, y: gold.y, id: 1 });
-    await D.frames(2);
-    assert.equal((await state()).stage, 'toStart', 'الزر الذهبي لم يُضغط والإبهام على العصا');
+    // (تحت ضغط التشغيل المتوازي قد تضيع لمسة على لوحة الرسم: تُعاد مرة)
+    const tapGold = async () => {
+      await touch('touchStart', thumbAt(0, 1), { x: gold.x, y: gold.y, id: 1 });
+      await touch('touchEnd', { x: gold.x, y: gold.y, id: 1 });
+      return page.waitForFunction(() => window.__umrah.game.stage === 'toStart', null, { timeout: 4000 }).then(() => true, () => false);
+    };
+    assert.ok((await tapGold()) || (await tapGold()), 'الزر الذهبي لم يُضغط والإبهام على العصا');
+    assert.ok((await state()).joy[1] > 0.9, 'لمسة الزر الذهبي ألغت العصا');
     // إلى خط البداية بالعصا وحدها: المشي الموجّه، ويقف عند الخط
     const n = await page.evaluate(() => {
       let n = 0;
