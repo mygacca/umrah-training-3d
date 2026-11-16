@@ -2,7 +2,6 @@
 // لا يقرأ الإدخال بنفسه: الوضع (10-modes.js) يضبط النظر ويمرّر أمر المشي إلى update.
 var EYE_HEIGHT = 1.62;
 var SNAP_ANGLE = Math.PI / 6; // 30° لكل دفعة
-var HEAD_LIMIT = (100 * Math.PI) / 180; // أقصى التفات للرأس عن الجسم إلى كل جهة
 
 function createPlayer({ scene, camera, renderer }) {
   const rig = new Group();
@@ -18,8 +17,8 @@ function createPlayer({ scene, camera, renderer }) {
     look: "mouse",
     yaw: 0, // دوران المنصّة حول المحور الرأسي
     pitch: 0, // ميل الرأس في وضع "mouse" فقط
-    // التفات الرأس عن الجسم في وضع "mouse" (الجوال): النظر يمنة ويسرة، والجسم يمشي في اتجاهه yaw.
-    // اتجاه النظر = yaw + head. والمشي في وضع "mouse" باتجاه الجسم دائمًا
+    // في وضع "mouse": اتجاه السير yaw (الجسم)، واتجاه النظر yaw + head. وهما مستقلان في الجوال:
+    // turnBody يغيّر السير والنظر كما هو، وturnHead يغيّر النظر والسير كما هو. والمشي باتجاه الجسم دائمًا
     head: 0,
     sensorQuat: new Quaternion(), // دوران الكاميرا داخل المنصّة في وضع "sensor"
     slow: false, // سرعات أبطأ وأريح في النظارة وعلبة VR
@@ -76,16 +75,12 @@ function createPlayer({ scene, camera, renderer }) {
   p.getPos = () => (headPos(head), { x: head.x, z: head.z });
   // اتجاه الجسم (لا النظر) بزاوية الخريطة
   p.bodyPhi = () => p.headingPhi() - (p.look === "mouse" ? p.head : 0);
-  // يدير الرأس، وما زاد عن حدّه يدير الجسم: من أكمل الالتفات دار جسمه معه
-  p.turnHead = (d) => {
-    const want = p.head + d;
-    p.head = Math.max(-HEAD_LIMIT, Math.min(HEAD_LIMIT, want));
-    p.yaw += want - p.head;
-  };
-  // الجسم يأخذ اتجاه النظر، ولا يتغير ما يُرى
-  p.alignBody = () => {
-    p.yaw += p.head;
-    p.head = 0;
+  // النظر وحده: اتجاه السير لا يتغير
+  p.turnHead = (d) => (p.head = ll(p.head + d));
+  // السير وحده: اتجاه النظر لا يتغير (التفات الرأس يعوّض دوران الجسم)
+  p.turnBody = (d) => {
+    p.yaw += d;
+    p.head = ll(p.head - d);
   };
   p.isJogging = () => p.jogToggle || p.jogKey || p.jogXR || p.jogPad;
 
