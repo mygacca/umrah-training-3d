@@ -30,6 +30,7 @@ function createFastLearning({ game, hud, player, world, hajj }) {
     let p = player.getPos();
     guide.sense = 1; // الكعبة عن اليسار
     guide.rHold = Math.hypot(p.x, p.z); // على البعد نفسه من الكعبة
+    guide.reached = ""; // مشي جديد: الهدف لم يُبلغ بعد
     const done = () => {
       if (game.stage !== stage) return true; // الشوط السابع ينقل إلى المنسك التالي
       if (stage === "tawaf") return game.debug().T.laps > start.T.laps;

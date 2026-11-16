@@ -16,7 +16,7 @@ var TAWAF_LOOK = (50 * Math.PI) / 180; // النظر في طواف «مشي مس
 var MAQAM_CLEAR = 2.6; // متر: أقرب ما يمرّ به المسار من مقام إبراهيم
 
 function createRouteGuide({ game, hud, laneAt }) {
-  const g = { sense: 0, rHold: 0 };
+  const g = { sense: 0, rHold: 0, siteSide: 0, reached: "" };
   const MAQAM_R = Math.hypot(Sn[0], Sn[1]);
   const MAQAM_PHI = Math.atan2(-Sn[1], Sn[0]);
   // أقرب ما يقترب المسار من الكعبة في كل زاوية: حدّ الحشود المنعَّم (03-crowds.js)، وأبعد عند الحِجر
@@ -82,7 +82,13 @@ function createRouteGuide({ game, hud, laneAt }) {
     const passZ = clamp(z, P.z0 + 2, P.z1 - 2);
     const targetInMasa = tx >= dt.x0;
     if (targetInMasa) {
-      if (inMasa(x, z)) return Math.abs(tz - z) < 0.8 ? null : alongMasa(x, z, tx, tz, best);
+      if (inMasa(x, z)) {
+        if (best) return Math.abs(tz - z) < 0.8 ? null : alongMasa(x, z, tx, tz, best);
+        // اللاعب والهدف كلاهما بعد طرف الحاجز (على الصفا أو المروة): إلى الهدف نفسه
+        const D = dt.divider;
+        if ((z > D.z1 + 1.2 && tz > D.z1 + 1.2) || (z < D.z0 - 1.2 && tz < D.z0 - 1.2)) return unit(tx - x, tz - z);
+        return Math.abs(tz - z) < 0.8 ? null : alongMasa(x, z, tx, tz, best);
+      }
       if (inPass(x, z)) return direct(x, z, dt.x0 + 3, passZ);
       return direct(x, z, P.x0 + 2, passZ);
     }
@@ -94,6 +100,33 @@ function createRouteGuide({ game, hud, laneAt }) {
     }
     if (inPass(x, z)) return direct(x, z, P.x0 - 3, passZ);
     return direct(x, z, tx, tz);
+  }
+
+  // في موقع من مشاعر الحج: إلى الهدف، وإن سدّ الطريقَ شيء فبمحاذاته من جهة واحدة حتى ينفتح الطريق
+  function siteClear(x, z, dx, dz, len) {
+    for (let d = 0.75; d <= len; d += 0.75) {
+      const px = x + dx * d;
+      const pz = z + dz * d;
+      if (!SITE.walk(px, pz)) return false;
+      const [cx, cz] = SITE.collide(px, pz);
+      if (Math.hypot(cx - px, cz - pz) > 0.05) return false;
+    }
+    return true;
+  }
+  function aroundSite(x, z, tx, tz) {
+    const dist = Math.hypot(tx - x, tz - z);
+    if (dist < 0.8) return null; // وصل
+    const d = unit(tx - x, tz - z);
+    if (siteClear(x, z, d[0], d[1], Math.min(3, dist))) return (g.siteSide = 0), d;
+    for (const turn of [0.45, 0.9, 1.35, 1.75])
+      for (const side of g.siteSide ? [g.siteSide] : [1, -1]) {
+        const c = Math.cos(turn * side);
+        const sn = Math.sin(turn * side);
+        const rx = d[0] * c - d[1] * sn;
+        const rz = d[0] * sn + d[1] * c;
+        if (siteClear(x, z, rx, rz, 2.25)) return (g.siteSide = side), [rx, rz];
+      }
+    return d;
   }
 
   // (x, z) موضع اللاعب، و(hx, hz) اتجاه سيره. fresh: بداية دفعة جديدة. side: تعديل اللاعب الجانبي (العصا أو السهمان).
@@ -116,16 +149,27 @@ function createRouteGuide({ game, hud, laneAt }) {
       return around(x, z, g.sense, g.rHold);
     }
     const T = hud.model.target;
-    // في مشاعر الحج (SITE): إلى الهدف في خط مستقيم، والتصادم يدور حول الحوض والخيام
-    if (SITE) return stage === "hajj" && T && Math.hypot(T[0] - x, T[1] - z) >= 0.8 ? unit(T[0] - x, T[1] - z) : null;
-    if (!GUIDE_STAGES[stage] || !T) return null;
+    if (!T) return null;
+    // بلغ هذا الهدف من قبل: المشي بعده حرّ حتى يتغير المنسك أو الهدف. وإلا تأرجح حول الهدف من يدفع العصا عنده
+    // (يبتعد عنه في اتجاه سيره، فيردّه المسار، فيتجاوزه...). ومن شاء اقترب من الحجر الأسود بعد خط البداية
+    const key = `${stage}|${T}`;
+    if (g.reached === key) return null;
+    const d = toRiteTarget(stage, x, z, T, best);
+    if (!d) g.reached = key;
+    return d;
+  };
+  function toRiteTarget(stage, x, z, T, best) {
+    // في مشاعر الحج (SITE): إلى الهدف في خط مستقيم، وحول ما في الطريق (حوض جمرة، أو جبل الرحمة، أو المشعر الحرام)
+    if (SITE) return stage === "hajj" ? aroundSite(x, z, T[0], T[1]) : null;
+    if (!GUIDE_STAGES[stage]) return null;
     // إلى بداية الطواف: خط الحجر الأسود على أفضل بعد للطواف، فيبدأ منه
     if (best && stage === "toStart") return toTarget(x, z, Math.cos(we) * TAWAF_BEST_R, -Math.sin(we) * TAWAF_BEST_R, best);
     return toTarget(x, z, T[0], T[1], best && stage === "sai");
-  };
-  g.arrivalFace = (stage) => (stage === "toStart" ? Ln.black : stage === "toMaqam" ? [0, 0] : null);
+  }
+  // ما يستقبله اللاعب عند موضع المنسك: الحجر الأسود عند خط البداية، والكعبة خلف المقام وعلى الصفا والمروة
+  g.arrivalFace = (stage) => (stage === "toStart" ? Ln.black : stage === "toMaqam" || stage === "toSafa" || stage === "sai" ? [0, 0] : null);
   // النظر المناسب في «مشي مستمر»، زاويةً عن اتجاه المسار (موجبة إلى اليسار): في الطواف نحو الكعبة، وفي غيره إلى الأمام
   g.lookOffset = (stage) => (stage === "tawaf" ? TAWAF_LOOK : 0);
-  g.reset = () => (g.sense = 0);
+  g.reset = () => ((g.sense = 0), (g.siteSide = 0), (g.reached = ""));
   return g;
 }

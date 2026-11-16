@@ -308,11 +308,20 @@ function createDriver(mode, page) {
   async function start() {
     const sel = `button[data-mode="${mode}"]`; // لا body: عليه data-mode أيضًا، فيُلمس وسط الشاشة
     await page.waitForSelector(sel, { state: 'visible', timeout: 15000 });
-    if (M.touch) await page.tap(sel), await page.tap('#startBtn');
-    else await page.click(sel), await page.click('#startBtn');
+    const pressStart = () => (M.touch ? page.tap('#startBtn') : page.click('#startBtn'));
+    if (M.touch) await page.tap(sel);
+    else await page.click(sel);
+    await pressStart();
+    // بدأ فعلًا: اختفت شاشة البداية واللاعب يتحرك. (المرحلة ihram قبل «ابدأ» أيضًا، فلا تكفي علامةً)
+    const started = (timeout) =>
+      page.waitForFunction((m) => document.getElementById('intro').hidden && window.__umrah.player.enabled && window.__umrah.modes.mode === m && window.__umrah.game.stage === 'ihram', mode, { timeout });
+    // تحت ضغط التشغيل المتوازي قد تضيع لمسة «ابدأ»: كان الاختبار يكمل والتدريب لم يبدأ، فلا تمشي العصا
+    await started(5000).catch(async () => {
+      if (await page.isVisible('#intro')) await pressStart();
+      await started(20000);
+    });
     if (mode === 'xr') await page.waitForFunction(() => window.__umrah.renderer.xr.isPresenting, null, { timeout: 20000 });
     if (M.sensor) await look({ yaw: 0, pitch: 0 }); // أول قراءة من المستشعر
-    await page.waitForFunction((m) => window.__umrah.modes.mode === m && window.__umrah.game.stage === 'ihram', mode, { timeout: 20000 });
     if (mode === 'cardboard') await lookAway();
   }
 

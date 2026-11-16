@@ -229,18 +229,19 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     assert.ok(Math.abs((await state()).yaw - b.yaw) < 0.01, 'الدوران لم يقف بعد اللمسة');
     // إصبع على السهم الأيمن ثانيتين: يتسارع بهدوء، ولا خطوة تتجاوز السرعة القصوى، ثم يقف بهدوء
     const b2 = await state();
-    await touch('touchStart', await center('#turnRBtn'));
+    // الضغط والقياس في تقييم واحد، فلا إطار حقيقي بينهما يبدأ التسارع قبل القياس. (واللمس الحقيقي للسهم في أول الاختبار وآخره)
     const run = await page.evaluate(() => {
-      const { player, step } = window.__umrah;
+      const { player, step, modes } = window.__umrah;
       const d = [];
+      modes.turnButton(-1, true);
       for (let i = 0; i < 60; i++) {
         const y = player.yaw;
         step(1 / 30);
         d.push(y - player.yaw);
       }
+      modes.turnButton(-1, false);
       return { first: d[0], maxStep: Math.max(...d), minStep: Math.min(...d), total: d.reduce((s, x) => s + x, 0), last: d[59] };
     });
-    await touch('touchEnd');
     assert.ok(run.minStep >= 0, 'السهم الأيمن دار يسارًا');
     assert.ok(run.first < run.last * 0.5, 'الدوران بدأ بسرعته القصوى لا بهدوء');
     assert.ok(run.maxStep <= TURN_BTN_RATE / 30 + 1e-9, `خطوة ${run.maxStep.toFixed(3)} فوق السرعة القصوى: قفزة`);
@@ -269,27 +270,68 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     await centerLook();
   });
 
-  test('الطواف بالعصا: النظر يدور مع المسار فتبقى الكعبة أمام من ينظر إليها، والسهم والجانب يقرّبان ويبعدان', async () => {
-    await D.act('لبّيك');
-    // إلى خط البداية بالعصا وحدها: المشي الموجّه، ويقف عند الخط
+  test('الطواف بالعصا: يبدأ بالنظر المناسب، ومن نظر إلى الكعبة بقيت أمامه مع المسار، والسهم والجانب يقرّبان ويبعدان', async () => {
+    // الإبهام على العصا أولًا، ثم الزر الذهبي بإصبع ثانٍ
     await stick(0, 1);
+    const gold = await page.evaluate(() => window.__umrah.panels.buttonScreen('action'));
+    // زمن اللمس والرفع محدَّد (80 ملّي ثانية بينهما) ويُرسلان معًا: تحت ضغط التشغيل المتوازي كان الرفع يتأخر
+    // أكثر من 600 ملّي ثانية، فتُحسب ضغطة طويلة لا نقرة
+    const t0 = Date.now() / 1000;
+    const goldFinger = { x: gold.x, y: gold.y, id: 1 };
+    await Promise.all([
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [thumbAt(0, 1), goldFinger], timestamp: t0 }),
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [goldFinger], timestamp: t0 + 0.08 }),
+    ]);
+    await page.waitForFunction(() => window.__umrah.game.stage === 'toStart', null, { timeout: 8000 }).catch(() => {});
+    assert.equal((await state()).stage, 'toStart', 'الزر الذهبي لم يُضغط والإبهام على العصا');
+    assert.ok((await state()).joy[1] > 0.9, 'لمسة الزر الذهبي ألغت العصا');
+    // إلى خط البداية بالعصا وحدها: المشي الموجّه، ويقف عند الخط
     const n = await page.evaluate(() => {
       let n = 0;
+      // خطوة أولًا: تحت الضغط قد لا يكون إطار حقيقي مرّ بعد ضغط الزر الذهبي، فالزر في النموذج ما زال «لبّيك» المضيء
+      window.__umrah.step(1 / 30);
       while (!window.__umrah.hud.model.action.enabled && n++ < 900) window.__umrah.step(1 / 30);
       for (let i = 0; i < 30; i++) window.__umrah.step(1 / 30);
       return n;
     });
     const atLine = await state();
     await release();
-    assert.ok(n < 900 && atLine.action.label.includes('أشِر'), 'العصا لم توصل إلى خط البداية');
+    const why = await page.evaluate(() => ({ held: window.__umrah.modes.assist.held, stick: window.__umrah.modes.assist.stick, reached: window.__umrah.modes.guideDir, enabled: window.__umrah.player.enabled, target: window.__umrah.hud.model.target }));
+    assert.ok(n < 900 && atLine.action.label.includes('أشِر'), `العصا لم توصل إلى خط البداية: ${JSON.stringify({ n, atLine, why })}`);
     const moved = await page.evaluate(() => window.__umrah.player.speed);
     assert.ok(moved < 0.1, 'لم يقف عند خط البداية والعصا مدفوعة');
-    // بعد الوصول بالعصا: اتجاه السير إلى الحجر الأسود (فلا يبدأ الطواف معكوسًا)، والنظر على حاله
+    // من ضغط الزر الذهبي وإبهامه على العصا لا يُوقَف: الوقوف لمن وصل، لا لمن أدّى المنسك. (هنا في الإحرام: لبّيك ← إلى خط البداية)
+    assert.ok(n > 30, 'لم يمشِ والإبهام على العصا بعد ضغط الزر الذهبي');
+    // عند موضع المنسك: اتجاه السير إلى الحجر الأسود (فلا يبدأ الطواف معكوسًا)، والنظر إليه
     await steps(90);
     const s0 = await state();
     const stone = toWorld(KAABA.lx / 2, KAABA.lz / 2);
-    assert.ok(Math.abs(wrap(s0.yaw - Math.atan2(-(stone[0] - s0.x), -(stone[1] - s0.z)))) < 0.1, 'اتجاه السير ليس إلى الحجر الأسود');
-    assert.ok(Math.abs(wrap(s0.view - atLine.view)) < 1e-6, 'النظر تغيّر وحده بعد الوصول بالعصا');
+    const toStone = Math.atan2(-(stone[0] - s0.x), -(stone[1] - s0.z));
+    assert.ok(Math.abs(wrap(s0.yaw - toStone)) < 0.1, 'اتجاه السير ليس إلى الحجر الأسود');
+    assert.ok(Math.abs(wrap(s0.view - toStone)) < 0.1, 'لم ينظر إلى الحجر الأسود');
+    // من دفع العصا من جديد عند الخط لا يتأرجح حول الهدف: يبلغه، ثم المشي بعده حرّ في اتجاه سيره
+    await stick(0, 1);
+    const wobble = await page.evaluate(() => {
+      const { player, step } = window.__umrah;
+      let turns = 0;
+      let moved = 0;
+      let prev = null;
+      for (let i = 0; i < 90; i++) {
+        const a = player.getPos();
+        step(1 / 30);
+        const b = player.getPos();
+        const d = [b.x - a.x, b.z - a.z];
+        moved += Math.hypot(...d);
+        if (prev && Math.hypot(...d) > 0.01 && d[0] * prev[0] + d[1] * prev[1] < 0) turns++;
+        if (Math.hypot(...d) > 0.01) prev = d;
+      }
+      return { turns, moved };
+    });
+    await release();
+    assert.equal(wobble.turns, 0, 'تأرجح حول الهدف من دفع العصا عند خط البداية');
+    assert.ok(wobble.moved > 3, 'المشي ليس حرًّا بعد بلوغ الهدف');
+    // يعود إلى الخط ليكمل
+    await pose(s0.x, s0.z, stone[0] - s0.x, stone[1] - s0.z);
     await D.act('أشِر');
     // على بعد 20 م من الكعبة: خارج ما يبتعد به المسار حول الحِجر
     await page.evaluate(() => {
@@ -299,14 +341,14 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
       player.teleport(p.x * k, p.z * k, -p.x, -p.z);
       step(1 / 30);
     });
-    // ينظر إلى الكعبة ويدفع العصا: يطوف والكعبة عن يساره، واتجاه السير مع المسار، والنظر ما زال إلى الكعبة
+    // أول الطواف: يدفع العصا فيطوف والكعبة عن يساره، واتجاه السير مع المسار، والنظر يأخذ النظر المناسب (نحو الكعبة 50°)
     await stick(0, 1);
     await steps(60);
     const a = await state();
     const r0 = Math.hypot(a.x, a.z);
     assert.ok(Math.abs(wrap(a.yaw - Math.atan2(-a.z, a.x))) < 0.15, 'اتجاه السير ليس مع مسار الطواف');
-    assert.ok(Math.abs(wrap(a.view - Math.atan2(a.x, a.z))) < 0.2, 'النظر ترك الكعبة حين بدأ المشي');
-    // بالسحب: تعديل صغير، ثم يرفع إصبعه والنظرة باقية
+    assert.ok(Math.abs(a.head - TAWAF_LOOK) < 0.1, `النظر ${a.head.toFixed(2)} عن اتجاه السير لا النظر المناسب للطواف`);
+    // بالسحب: إلى الكعبة تمامًا، ثم يرفع إصبعه والنظرة باقية من المسار
     const finger = await look(Math.PI / 2 - a.head - 0.12, { thumb: thumbAt(0, 1) });
     await touch('touchEnd', finger);
     await D.frames(1);
@@ -357,7 +399,7 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     await steps(60);
     const c = await state();
     await release();
-    assert.ok(Math.abs(c.head) < 0.1, 'النظرة لم تعد إلى اتجاه السير');
+    assert.ok(Math.abs(c.head - TAWAF_LOOK) < 0.1, '✓ لم يعد النظر المناسب للطواف');
     assert.ok(Math.hypot(c.x, c.z) < Math.hypot(b.x, b.z) - 1.5, 'العصا إلى اليسار لم تقرّب من الكعبة');
     assert.equal((await D.dbg()).stats.wrong, 0);
   });
@@ -479,5 +521,150 @@ describe('التحكم في الجوال', { timeout: 10 * 60 * 1000 }, () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await D.frames(3);
     assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
+  });
+});
+
+// دراسة وسائل المشي: لاعب يشغّل «مشي مستمر» من أول لحظة (أو يدفع العصا إلى الأمام وحدها) ثم لا يلمس إلا الزر الذهبي.
+// يجب أن يؤدي المناسك كلها بلا خطأ، ولا يمشي حيث لا مسار (كان المشي المستمر يمشي مستقيمًا في الإحرام حتى الأعمدة)،
+// ولا يُطفأ وحده، ولا يقف دون موضع المنسك، ولا يمشي إلى خلف ما يراه.
+describe('رحلة كاملة بوسيلة مشي واحدة والزر الذهبي', { timeout: 20 * 60 * 1000 }, () => {
+  // يمشي بالزمن المحاكى، ويضغط الزر الذهبي كما يضغطه لاعب: في الطواف حين يضيء، وفي غيره بعد ثانية من الوقوف
+  // stick: بلا مشي مستمر، يدفع العصا إلى الأمام ويرفع إبهامه حين يقف (المشي الموجّه)
+  const journey = async (page, { rounds = 400, stick = false } = {}) => {
+    const seen = { offs: [], arrivals: {}, maxIhramMove: 0, steps: [], moving: 0, back: 0, wrongSide: 0 };
+    for (let round = 0; round < rounds; round++) {
+      const r = await page.evaluate((stick) => {
+        const { game, hud, modes, player, step, panels, hajj, input } = window.__umrah;
+        const out = { offs: [], arrivals: {}, ihramMove: 0, steps: [], moving: 0, back: 0, wrongSide: 0 };
+        let still = 0;
+        let idle = 0;
+        for (let i = 0; i < 300 && game.stage !== 'done'; i++) {
+          const before = player.getPos();
+          // يرفع إبهامه حين يقف، وحين يضيء الزر الذهبي خارج الطواف (ليؤدي المنسك)
+          if (stick) input.joystick.y = still > 20 || game.stage === 'ihram' || (hud.model.action.enabled && game.stage !== 'tawaf') ? 0 : 1;
+          step(1 / 30);
+          const p = player.getPos();
+          const a = hud.model.action;
+          const name = game.stage === 'hajj' ? `hajj:${hajj.stats().step}` : game.stage;
+          if (out.steps[out.steps.length - 1] !== name) out.steps.push(name);
+          if (!stick && !modes.autoWalk) out.offs.push(`${name}: ${hud.model.toast.msg}`);
+          // يمشي إلى خلف ما يراه (النظر أبعد من 100° عن اتجاه السير)
+          if (player.speed > 1) out.moving++, Math.abs(player.head) > 1.75 && out.back++;
+          // في السعي: الذاهب إلى المروة غربي الحاجز والعائد شرقيه
+          if (game.stage === 'sai' && p.z < 8 && p.z > -78 && (game.debug().A.target === 'marwa' ? p.x > 74.5 : p.x < 75.5)) out.wrongSide++;
+          if (game.stage === 'ihram') out.ihramMove = Math.max(out.ihramMove, Math.hypot(p.x - before.x, p.z - before.z));
+          still = player.speed < 0.05 ? still + 1 : 0;
+          // الموضع الذي انتظر فيه الزر الذهبي
+          if (a.enabled && (stick || modes.assist.autoWait) && still > 25 && !out.arrivals[name]) out.arrivals[name] = [p.x, p.z, player.headingYaw()];
+          if (a.enabled && (game.stage === 'tawaf' || still > 30)) panels.press('action'), (still = 0);
+          // ينتظر مؤقتًا حقيقيًّا (حجاب أو انتقال): لا فائدة من خطوات أكثر
+          idle = !a.enabled && player.speed < 0.05 ? idle + 1 : 0;
+          if (idle > 40) break;
+        }
+        if (stick) input.joystick.y = 0;
+        const d = game.debug();
+        const at = player.getPos();
+        // لتشخيص رحلة لم تكتمل
+        const diag = { mode: modes.mode, intro: !document.getElementById('intro').hidden, pos: [+at.x.toFixed(1), +at.z.toFixed(1)], enabled: player.enabled, held: modes.assist.held, guide: modes.guide, look: player.look, action: hud.model.action, target: hud.model.target, menu: !document.getElementById('menu').hidden };
+        return { ...out, stage: game.stage, stats: d.stats, valid: d.T.valid, sai: d.A.lap, hajj: hajj.stats(), autoWalk: modes.autoWalk, diag };
+      }, stick);
+      seen.offs.push(...r.offs.slice(0, 1));
+      for (const k of ['moving', 'back', 'wrongSide']) seen[k] += r[k];
+      Object.assign(seen.arrivals, r.arrivals);
+      seen.maxIhramMove = Math.max(seen.maxIhramMove, r.ihramMove);
+      for (const st of r.steps) if (seen.steps[seen.steps.length - 1] !== st) seen.steps.push(st);
+      seen.last = r;
+      if (r.stage === 'done') break;
+      await page.waitForTimeout(300); // المؤقتات الحقيقية: التعتيم والانتقال بين المواقع
+    }
+    return seen;
+  };
+
+  test('العمرة بمشي مستمر: من الإحرام إلى الملخص، وفي كل منسك عند موضعه', async () => {
+    const { browser, page, errors, driver: D } = await openPage('mobile');
+    try {
+      await D.start();
+      await page.evaluate(() => (document.getElementById('coach').hidden = true));
+      // يشغّله في الإحرام: لا مسار، فلا يمشي، ويقول ما ينتظره، ويبقى مشغّلًا
+      const p0 = await page.evaluate(() => window.__umrah.player.getPos());
+      await page.tap('#autoWalkBtn');
+      await page.evaluate(() => {
+        for (let i = 0; i < 90; i++) window.__umrah.step(1 / 30);
+      });
+      const w = await page.evaluate(() => ({ p: window.__umrah.player.getPos(), auto: window.__umrah.modes.autoWalk, wait: document.body.classList.contains('auto-wait'), toast: window.__umrah.hud.model.toast.msg }));
+      assert.ok(Math.hypot(w.p.x - p0.x, w.p.z - p0.z) < 0.01, 'المشي المستمر مشى في الإحرام بلا مسار');
+      assert.deepEqual([w.auto, w.wait], [true, true], 'المشي المستمر لم يبقَ مشغّلًا منتظرًا');
+      assert.ok(w.toast.includes('الزر الذهبي'), `لم يقل ما ينتظره: ${w.toast}`);
+      const j = await journey(page);
+      assert.equal(j.last.stage, 'done', `لم تكتمل العمرة: ${j.steps.join(' ← ')} ${JSON.stringify(j.last.diag)}`);
+      assert.deepEqual(j.offs, [], 'المشي المستمر أُطفئ وحده');
+      assert.ok(j.maxIhramMove < 0.01, 'مشى في الإحرام');
+      assert.deepEqual(j.steps, ['ihram', 'toStart', 'tawaf', 'toMaqam', 'prayer', 'toSafa', 'sai', 'tahallul']);
+      const s = j.last.stats;
+      assert.deepEqual([j.last.valid, s.takbir, s.dua, s.hijr, s.wrong, s.invalid], [7, 7, 7, 0, 0, 0], 'عمرة المشي المستمر ليست تامة');
+      // في الملخص يُطفأ (في الإطار التالي)
+      assert.equal(await page.evaluate(() => (window.__umrah.step(1 / 30), window.__umrah.modes.autoWalk)), false, 'المشي المستمر باقٍ بعد الملخص');
+      // مواضع المناسك: خط الحجر الأسود على أفضل بعد والنظر إلى الحجر، وخلف المقام، وعلى الصفا في وسطه
+      const stone = toWorld(KAABA.lx / 2, KAABA.lz / 2);
+      const [sx, sz, sView] = j.arrivals.toStart;
+      assert.ok(Math.abs(Math.hypot(sx, sz) - TAWAF_BEST_R) < 0.9, `خط البداية على ${Math.hypot(sx, sz).toFixed(1)} م`);
+      assert.ok(Math.abs(wrap(Math.atan2(-sz, sx) - Math.atan2(-stone[1], stone[0]))) < 0.1, 'ليس على خط الحجر الأسود');
+      const maqam = toWorld(KAABA.lx / 2 + 10.5, 1.2);
+      const [mx, mz] = j.arrivals.toMaqam;
+      const behind = Math.hypot(mx, mz) - Math.hypot(...maqam);
+      assert.ok(behind > 2 && behind < 5 && Math.abs(wrap(Math.atan2(-mz, mx) - Math.atan2(-maqam[1], maqam[0]))) < 0.1, `ليس خلف المقام: (${mx.toFixed(1)}, ${mz.toFixed(1)})`);
+      const [fx, fz] = j.arrivals.toSafa;
+      assert.ok(Math.hypot(fx - 75, fz - 19) < 1, `ليس على الصفا في وسطه: (${fx.toFixed(1)}, ${fz.toFixed(1)})`);
+      assert.ok(sView !== undefined);
+      assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test('العمرة بالعصا إلى الأمام والزر الذهبي وحدهما: لا يمشي إلى خلف ما يراه، ولا عكس الناس في المسعى', async () => {
+    const { browser, page, errors, driver: D } = await openPage('mobile');
+    try {
+      await D.start();
+      await page.evaluate(() => (document.getElementById('coach').hidden = true));
+      const j = await journey(page, { stick: true });
+      assert.equal(j.last.stage, 'done', `لم تكتمل العمرة: ${j.steps.join(' ← ')} ${JSON.stringify(j.last.diag)}`);
+      const s = j.last.stats;
+      assert.deepEqual([j.last.valid, s.takbir, s.dua, s.hijr, s.wrong, s.invalid], [7, 7, 7, 0, 0, 0], 'عمرة العصا ليست تامة');
+      // أول كل منسك يأخذ النظر اتجاه المسار: لحظات اللحاق وحدها يكون النظر فيها إلى الخلف
+      assert.ok(j.back < j.moving * 0.02, `مشى إلى خلف ما يراه ${j.back} إطارًا من ${j.moving}`);
+      assert.equal(j.wrongSide, 0, 'مشى في المسعى في جهة العائدين');
+      // عند المنسك ينظر إلى ما يستقبله: الحجر الأسود عند خط البداية
+      const stone = toWorld(KAABA.lx / 2, KAABA.lz / 2);
+      const [sx, sz, sView] = j.arrivals.toStart;
+      assert.ok(Math.abs(wrap(sView - Math.atan2(-(stone[0] - sx), -(stone[1] - sz)))) < 0.15, 'لم ينظر إلى الحجر الأسود عند خط البداية');
+      assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test('الحج بمشي مستمر: من التروية إلى طواف الوداع، والرمي بالترتيب حول الأحواض', async () => {
+    const { browser, page, errors, driver: D } = await openPage('mobile');
+    try {
+      await page.tap('button[data-kind="hajj"]');
+      await D.start();
+      await page.evaluate(() => (document.getElementById('coach').hidden = true));
+      // العمرة في الاختبار السابق: من يوم التروية. والهرولة تقصّر زمن الاختبار
+      await page.evaluate(() => (window.__umrah.hajj.jump('tarwiyah'), (window.__umrah.player.jogToggle = true)));
+      await page.tap('#autoWalkBtn');
+      const j = await journey(page, { rounds: 500 });
+      assert.equal(j.last.stage, 'done', `لم يكتمل الحج: ${j.steps.join(' ← ')} ${JSON.stringify(j.last.diag)}`);
+      assert.deepEqual(j.offs, [], 'المشي المستمر أُطفئ وحده');
+      const h = j.last.hajj;
+      // بلا خطأ: لا خروج من عرفة قبل الغروب، ولا رمي لغير العقبة يوم النحر، ولا رمي بغير ترتيب
+      assert.deepEqual([h.outArafah, h.wrongNahr, h.orderErr], [0, 0, 0], 'أخطاء في حج المشي المستمر');
+      assert.deepEqual([h.aqaba, h.tashreeq, h.dua], [7, 42, 4], 'الرمي والدعاء بعد الجمرتين ليسا تامّين');
+      for (const step of ['hajj:enterArafah', 'hajj:pebbles', 'hajj:mashar', 'hajj:aqaba', 'hajj:stoning', 'toStart', 'tawaf', 'sai'])
+        assert.ok(j.steps.includes(step), `لم يمرّ بـ ${step}`);
+      assert.deepEqual(errors, [], 'أخطاء في وحدة التحكم');
+    } finally {
+      await browser.close();
+    }
   });
 });
